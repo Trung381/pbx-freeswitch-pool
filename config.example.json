@@ -15,5 +15,12 @@
     "route": "/conf/config", "host": "127.0.0.1", "port": 8081,
     "cert_path": "", "key_path": "", "secure": true
   },
-  "database": { "name": "custompbx", "host": "127.0.0.1", "port": 5432, "user": "custompbx", "pass": "change-me" }
+  "database": { "name": "custompbx", "host": "127.0.0.1", "port": 5432, "user": "custompbx", "pass": "change-me" },
+  "call_webhook": {
+    "enabled": false,
+    "url": "https://chatwoot.example.com/webhooks/pbx/calls",
+    "secret": "change-me",
+    "timeout_seconds": 5,
+    "queue_size": 256
+  }
 }

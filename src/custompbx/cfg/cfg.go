@@ -130,11 +130,20 @@ type Database struct {
 	Pass string `json:"pass"`
 }
 
+type CallWebhook struct {
+	Enabled        bool   `json:"enabled"`
+	URL            string `json:"url"`
+	Secret         string `json:"secret"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
+	QueueSize      int    `json:"queue_size,omitempty"`
+}
+
 type GeneralCfg struct {
-	Fs      FreeSWITCH `json:"freeswitch"`
-	Web     WebServer  `json:"webserver"`
-	XMLCurl WebServer  `json:"xml_curl_server"`
-	Db      Database   `json:"database"`
+	Fs          FreeSWITCH  `json:"freeswitch"`
+	Web         WebServer   `json:"webserver"`
+	XMLCurl     WebServer   `json:"xml_curl_server"`
+	Db          Database    `json:"database"`
+	CallWebhook CallWebhook `json:"call_webhook,omitempty"`
 }
 
 func RD() (config GeneralCfg, err error) {

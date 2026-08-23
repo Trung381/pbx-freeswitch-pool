@@ -73,6 +73,8 @@ services:
       # Quick-start only: replace the unusable stock FreeSWITCH CDR sample DSN
       # when it is imported unchanged. User-configured CDR databases are preserved.
       CUSTOMPBX_DEMO_CDR_BOOTSTRAP: "true"
+      PBX_CALL_WEBHOOK_URL: ${PBX_CALL_WEBHOOK_URL:-}
+      PBX_CALL_WEBHOOK_SECRET: ${PBX_CALL_WEBHOOK_SECRET:-}
     ports:
       - 8080:8080
       - 8081:8081

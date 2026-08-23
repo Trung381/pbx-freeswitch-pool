@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"custompbx/cache"
+	"custompbx/callwebhook"
 	"custompbx/cfg"
 	"custompbx/cweb"
 	"custompbx/daemonCache"
@@ -49,6 +50,7 @@ func main() {
 
 	log.Println("CustomPBX development version: " + mainStruct.Version)
 	log.Println("Starting...")
+	callwebhook.Start(cfg.CustomPbx.CallWebhook)
 	daemonCache.InitDaemonState()
 	log.Println("DB")
 	db.StartDB()

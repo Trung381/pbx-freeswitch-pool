@@ -4,6 +4,7 @@ import (
 	"custompbx/altData"
 	"custompbx/altStruct"
 	"custompbx/cache"
+	"custompbx/callwebhook"
 	"custompbx/cfg"
 	"custompbx/daemonCache"
 	"custompbx/intermediateDB"
@@ -186,6 +187,8 @@ const (
 	NameChannelWriteCodecRate        = "Channel-Write-Codec-Rate"
 	NameChannelWriteCodecBitRate     = "Channel-Write-Codec-Bit-Rate"
 	NameCallerChannelAnswerTIme      = "Caller-Channel-Answered-Time"
+	NameChannelHangupCause           = "Hangup-Cause"
+	NameChannelRecordURL             = "variable_recording_url"
 	NameCallcenterAction             = "CC-Action"
 	NameCallcenterAgent              = "CC-Agent"
 	NameCallcenterAgentStatus        = "CC-Agent-Status"
@@ -703,6 +706,7 @@ func channelCreateHandler(event string, id int, eventChannel chan interface{}) {
 				InitialContext: eventMap[],*/
 
 	}
+	publishCallEvent("call.ringing", "ringing", eventMap, channel)
 
 	possibleUserName := channel.PresenceId
 	if possibleUserName == "" {
@@ -732,8 +736,10 @@ func channelAnswerHandler(event string, id int, eventChannel chan interface{}) {
 	cCache := pbxcache.GetChannelsCache()
 	channel := cCache.MarkAnswered(eventMap[NameChannelUuid])
 	if channel == nil {
+		publishCallEvent("call.answered", "answered", eventMap, nil)
 		return
 	}
+	publishCallEvent("call.answered", "answered", eventMap, channel)
 	publishChannelCounters(eventChannel, cCache)
 
 	possibleUserName := channel.PresenceId
@@ -760,9 +766,11 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 	cCache := pbxcache.GetChannelsCache()
 	channel := cCache.RemoveByUUID(eventMap[NameChannelUuid], eventMap[NameChannelOtherLegUuid])
 	if channel == nil {
+		publishCallEvent(callEndedEvent(eventMap), callEndedStatus(eventMap), eventMap, nil)
 		cleanupUnknownDestroyedChannel(eventMap, eventChannel)
 		return
 	}
+	publishCallEvent(callEndedEvent(eventMap), callEndedStatus(eventMap), eventMap, channel)
 	possibleUserName := channel.PresenceId
 	if possibleUserName == "" {
 		possibleUserName = channel.Name
@@ -776,6 +784,97 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 	directoryCache := cache.GetDirectoryCache()
 	directoryCache.UserCache.SetCall(user, cache.UserCallState{UUID: channel.Uuid}, false)
 	eventChannel <- user
+}
+
+func publishCallEvent(eventName, status string, eventMap map[string]string, channel *mainStruct.Channel) {
+	legUUID := eventMap[NameChannelUuid]
+	rootCallID := eventMap[NameChannelCallUuid]
+	direction := eventMap[NameChannelDirection]
+	fromNumber := eventMap[NameChannelCallerNumber]
+	toNumber := eventMap[NameChannelCallerDest]
+	startedEpoch := eventMap[NameChannelCreatedEpoch]
+	if channel != nil {
+		if legUUID == "" {
+			legUUID = channel.Uuid
+		}
+		if rootCallID == "" {
+			rootCallID = channel.CallUuid
+		}
+		if direction == "" {
+			direction = channel.Direction
+		}
+		if fromNumber == "" {
+			fromNumber = channel.CidNum
+		}
+		if toNumber == "" {
+			toNumber = channel.Dest
+		}
+		if startedEpoch == "" {
+			startedEpoch = channel.CreatedEpoch
+		}
+	}
+	if rootCallID == "" {
+		rootCallID = legUUID
+	}
+
+	startedAt, startedSeconds := freeSwitchTimestamp(startedEpoch)
+	answeredAt, _ := freeSwitchTimestamp(eventMap[NameCallerChannelAnswerTIme])
+	endedAt, endedSeconds := freeSwitchTimestamp(eventMap[NameEventDateTimestamp])
+	duration := int64(0)
+	if endedSeconds > startedSeconds && startedSeconds > 0 {
+		duration = endedSeconds - startedSeconds
+	}
+
+	callwebhook.Publish(callwebhook.Event{
+		EventID:      eventName + ":" + legUUID,
+		Event:        eventName,
+		PBXCallID:    rootCallID,
+		LegUUID:      legUUID,
+		Direction:    direction,
+		FromNumber:   fromNumber,
+		ToNumber:     toNumber,
+		Extension:    extensionFromChannel(channel),
+		Status:       status,
+		StartedAt:    startedAt,
+		AnsweredAt:   answeredAt,
+		EndedAt:      endedAt,
+		Duration:     duration,
+		HangupCause:  eventMap[NameChannelHangupCause],
+		RecordingURL: eventMap[NameChannelRecordURL],
+	})
+}
+
+func freeSwitchTimestamp(value string) (string, int64) {
+	seconds := normalizedFreeSWITCHEpoch(value)
+	if seconds <= 0 {
+		return "", 0
+	}
+	return time.Unix(seconds, 0).UTC().Format(time.RFC3339), seconds
+}
+
+func extensionFromChannel(channel *mainStruct.Channel) string {
+	if channel == nil {
+		return ""
+	}
+	presence := channel.PresenceId
+	if at := strings.IndexByte(presence, '@'); at > 0 {
+		return presence[:at]
+	}
+	return ""
+}
+
+func callEndedEvent(eventMap map[string]string) string {
+	if _, answeredSeconds := freeSwitchTimestamp(eventMap[NameCallerChannelAnswerTIme]); answeredSeconds > 0 {
+		return "call.completed"
+	}
+	return "call.missed"
+}
+
+func callEndedStatus(eventMap map[string]string) string {
+	if callEndedEvent(eventMap) == "call.completed" {
+		return "completed"
+	}
+	return "missed"
 }
 
 func callStateFromChannel(channel *mainStruct.Channel) cache.UserCallState {
