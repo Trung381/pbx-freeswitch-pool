@@ -81,7 +81,6 @@ services:
       - 8082:8082
       - 3478:3478
     volumes:
-      - /app
       - ./docker/config.json:/app/config.json
       - freeswitch-recordings:/app/recordings
     networks:

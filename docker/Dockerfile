@@ -98,8 +98,6 @@ COPY --from=backend /app/cpbx /app/cpbx
 # Set environment variables if necessary
 # ENV ...
 
-VOLUME ["/app"]
-
 # Expose the port that the Golang backend listens on
 EXPOSE 8080
 
