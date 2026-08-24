@@ -477,8 +477,10 @@ func turnServer() {
 	}
 
 	_, err = turn.NewServer(turn.ServerConfig{
-		ChannelBindTimeout: time.Second * 2,
-		Realm:              realm,
+		// Keep ChannelBindTimeout unset so Pion uses the TURN protocol default
+		// lifetime (10 minutes). Browsers refresh channel bindings on that
+		// cadence; overriding it with a very short lifetime causes one-way audio.
+		Realm: realm,
 		AuthHandler: func(username string, realm string, srcAddr net.Addr) ([]byte, bool) {
 			return temporaryTURNAuthKey(sharedSecret, username, realm, time.Now())
 		},
