@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1" //nolint:gosec // Coturn REST credentials require HMAC-SHA1.
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"custompbx/cache"
@@ -455,18 +457,39 @@ func turnServer() {
 		return
 	}
 
+	realm := strings.TrimSpace(os.Getenv("PBX_TURN_REALM"))
+	if realm == "" {
+		realm = "custom-pbx.com"
+	}
+	sharedSecret := strings.TrimSpace(os.Getenv("PBX_TURN_SHARED_SECRET"))
+	relayAddress := strings.TrimSpace(os.Getenv("PBX_TURN_EXTERNAL_IP"))
+	if relayAddress == "" {
+		relayAddress = cfg.CustomPbx.Web.Host
+	}
+	relayIP := net.ParseIP(relayAddress)
+	if relayIP == nil {
+		log.Printf("STUN/TURN: invalid PBX_TURN_EXTERNAL_IP %q", relayAddress)
+		daemonCache.State.StunServerStatus = false
+		return
+	}
+	if relayIP.IsUnspecified() {
+		log.Println("STUN/TURN: PBX_TURN_EXTERNAL_IP is not configured; STUN works but relayed media will advertise an unusable address")
+	}
+
 	_, err = turn.NewServer(turn.ServerConfig{
 		ChannelBindTimeout: time.Second * 2,
-		Realm:              "custom-pbx.com",
+		Realm:              realm,
 		AuthHandler: func(username string, realm string, srcAddr net.Addr) ([]byte, bool) {
-			return nil, false
+			return temporaryTURNAuthKey(sharedSecret, username, realm, time.Now())
 		},
 		PacketConnConfigs: []turn.PacketConnConfig{
 			{
 				PacketConn: udpListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{
-					RelayAddress: net.ParseIP(cfg.CustomPbx.Web.Host),
+				RelayAddressGenerator: &turn.RelayAddressGeneratorPortRange{
+					RelayAddress: relayIP,
 					Address:      "0.0.0.0",
+					MinPort:      49160,
+					MaxPort:      49200,
 				},
 			},
 		},
@@ -483,6 +506,26 @@ func turnServer() {
 	<-sigs
 
 	daemonCache.State.StunServerStatus = false
+}
+
+func temporaryTURNAuthKey(sharedSecret, username, realm string, now time.Time) ([]byte, bool) {
+	if sharedSecret == "" {
+		return nil, false
+	}
+
+	expiresAt, _, found := strings.Cut(username, ":")
+	if !found {
+		return nil, false
+	}
+	expiry, err := strconv.ParseInt(expiresAt, 10, 64)
+	if err != nil || expiry <= now.Unix() {
+		return nil, false
+	}
+
+	mac := hmac.New(sha1.New, []byte(sharedSecret))
+	_, _ = mac.Write([]byte(username))
+	password := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	return turn.GenerateAuthKey(username, realm, password), true
 }
 
 func checkAndCreateCerts() (string, string, string, string) {
