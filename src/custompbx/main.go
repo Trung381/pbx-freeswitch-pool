@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1" //nolint:gosec // Coturn REST credentials require HMAC-SHA1.
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"custompbx/cache"
@@ -475,6 +476,64 @@ func turnServer() {
 	if relayIP.IsUnspecified() {
 		log.Println("STUN/TURN: PBX_TURN_EXTERNAL_IP is not configured; STUN works but relayed media will advertise an unusable address")
 	}
+	tcpListener, err := net.Listen("tcp4", "0.0.0.0:"+strconv.Itoa(cfg.CustomPbx.Web.StunPort))
+	if err != nil {
+		log.Println("STUN/TURN: Failed to create TCP listener: ", err)
+		daemonCache.State.StunServerStatus = false
+		_ = udpListener.Close()
+		return
+	}
+
+	listenerConfigs := []turn.ListenerConfig{
+		{
+			Listener:              tcpListener,
+			RelayAddressGenerator: newTURNRelayAddressGenerator(relayIP),
+		},
+	}
+	tlsPort := 0
+	tlsCertFile := strings.TrimSpace(os.Getenv("PBX_TURN_TLS_CERT_FILE"))
+	tlsKeyFile := strings.TrimSpace(os.Getenv("PBX_TURN_TLS_KEY_FILE"))
+	if tlsCertFile != "" || tlsKeyFile != "" {
+		if tlsCertFile == "" || tlsKeyFile == "" {
+			log.Println("STUN/TURN: both PBX_TURN_TLS_CERT_FILE and PBX_TURN_TLS_KEY_FILE are required")
+			daemonCache.State.StunServerStatus = false
+			_ = udpListener.Close()
+			_ = tcpListener.Close()
+			return
+		}
+
+		tlsPort, err = turnTLSPort(os.Getenv("PBX_TURN_TLS_PORT"))
+		if err != nil {
+			log.Println("STUN/TURN: ", err)
+			daemonCache.State.StunServerStatus = false
+			_ = udpListener.Close()
+			_ = tcpListener.Close()
+			return
+		}
+		certificate, loadErr := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
+		if loadErr != nil {
+			log.Println("STUN/TURN: Failed to load TLS certificate: ", loadErr)
+			daemonCache.State.StunServerStatus = false
+			_ = udpListener.Close()
+			_ = tcpListener.Close()
+			return
+		}
+		tlsListener, listenErr := tls.Listen("tcp4", "0.0.0.0:"+strconv.Itoa(tlsPort), &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			Certificates: []tls.Certificate{certificate},
+		})
+		if listenErr != nil {
+			log.Println("STUN/TURN: Failed to create TLS listener: ", listenErr)
+			daemonCache.State.StunServerStatus = false
+			_ = udpListener.Close()
+			_ = tcpListener.Close()
+			return
+		}
+		listenerConfigs = append(listenerConfigs, turn.ListenerConfig{
+			Listener:              tlsListener,
+			RelayAddressGenerator: newTURNRelayAddressGenerator(relayIP),
+		})
+	}
 
 	_, err = turn.NewServer(turn.ServerConfig{
 		// Keep ChannelBindTimeout unset so Pion uses the TURN protocol default
@@ -486,15 +545,11 @@ func turnServer() {
 		},
 		PacketConnConfigs: []turn.PacketConnConfig{
 			{
-				PacketConn: udpListener,
-				RelayAddressGenerator: &turn.RelayAddressGeneratorPortRange{
-					RelayAddress: relayIP,
-					Address:      "0.0.0.0",
-					MinPort:      49160,
-					MaxPort:      49200,
-				},
+				PacketConn:            udpListener,
+				RelayAddressGenerator: newTURNRelayAddressGenerator(relayIP),
 			},
 		},
+		ListenerConfigs: listenerConfigs,
 	})
 	if err != nil {
 		log.Println("STUN: ", err)
@@ -502,12 +557,37 @@ func turnServer() {
 		return
 	}
 
-	log.Println("STUN Server")
+	if tlsPort == 0 {
+		log.Printf("STUN/TURN server listening on UDP/TCP %d; TLS disabled", cfg.CustomPbx.Web.StunPort)
+	} else {
+		log.Printf("STUN/TURN server listening on UDP/TCP %d and TLS %d", cfg.CustomPbx.Web.StunPort, tlsPort)
+	}
 	daemonCache.State.StunServerStatus = true
 	sigs := make(chan interface{}, 1)
 	<-sigs
 
 	daemonCache.State.StunServerStatus = false
+}
+
+func newTURNRelayAddressGenerator(relayIP net.IP) *turn.RelayAddressGeneratorPortRange {
+	return &turn.RelayAddressGeneratorPortRange{
+		RelayAddress: relayIP,
+		Address:      "0.0.0.0",
+		MinPort:      49160,
+		MaxPort:      49200,
+	}
+}
+
+func turnTLSPort(value string) (int, error) {
+	if strings.TrimSpace(value) == "" {
+		return 5349, nil
+	}
+
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("invalid PBX_TURN_TLS_PORT %q", value)
+	}
+	return port, nil
 }
 
 func temporaryTURNAuthKey(sharedSecret, username, realm string, now time.Time) ([]byte, bool) {

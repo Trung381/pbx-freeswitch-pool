@@ -124,9 +124,18 @@ For browser media relay, configure the built-in TURN server before starting the 
 PBX_TURN_SHARED_SECRET=replace-with-a-long-random-secret
 PBX_TURN_EXTERNAL_IP=203.0.113.10
 PBX_TURN_REALM=pbx.example.com
+PBX_TURN_TLS_PORT=5349
 ```
 
-Use the same shared secret in the Chatwoot Phone inbox. UDP `3478` accepts STUN/TURN requests and UDP `49160-49200` carries relayed media, so both ranges must be allowed by the host firewall and VPS security group.
+Use the same shared secret in the Chatwoot Phone inbox. UDP and TCP `3478` accept STUN/TURN requests, TCP `5349` accepts TURN over TLS when certificate paths are configured, and UDP `49160-49200` carries relayed media. All of these ports must be allowed by the host firewall and VPS security group.
+
+For a host with Let's Encrypt certificates, add the TLS override when starting the stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.turn-tls.yml up -d --build
+```
+
+Override `PBX_TURN_TLS_CERT_FILE`, `PBX_TURN_TLS_KEY_FILE`, or `PBX_TURN_CERTS_HOST_DIR` when the certificate is stored elsewhere. Configure browser ICE servers in fallback order, for example `turn:pbx.example.com:3478?transport=udp`, `turn:pbx.example.com:3478?transport=tcp`, and `turns:pbx.example.com:5349?transport=tcp`.
 
 The example credentials are intended only for a local evaluation environment. Replace them before any shared or Internet-accessible deployment.
 
@@ -290,7 +299,6 @@ If you have any questions or feedback, don't hesitate to get in touch through th
 
 
 <img width="2558" height="1401" alt="Opera Instantané_2026-07-18_192427_localhost" src="https://github.com/user-attachments/assets/2b8e2611-9359-4525-84cf-35aadecde036" />
-
 
 
 

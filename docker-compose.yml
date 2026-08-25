@@ -78,11 +78,16 @@ services:
       PBX_TURN_SHARED_SECRET: ${PBX_TURN_SHARED_SECRET:-}
       PBX_TURN_EXTERNAL_IP: ${PBX_TURN_EXTERNAL_IP:-}
       PBX_TURN_REALM: ${PBX_TURN_REALM:-td1.tekomi.vn}
+      PBX_TURN_TLS_PORT: ${PBX_TURN_TLS_PORT:-5349}
+      PBX_TURN_TLS_CERT_FILE: ${PBX_TURN_TLS_CERT_FILE:-}
+      PBX_TURN_TLS_KEY_FILE: ${PBX_TURN_TLS_KEY_FILE:-}
     ports:
       - 8080:8080
       - 8081:8081
       - 8082:8082
       - 3478:3478/udp
+      - 3478:3478/tcp
+      - 5349:5349/tcp
       - 49160-49200:49160-49200/udp
     volumes:
       - ./docker/config.json:/app/config.json

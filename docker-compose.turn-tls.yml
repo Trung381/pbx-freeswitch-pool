@@ -1,0 +1,7 @@
+services:
+  custompbx:
+    environment:
+      PBX_TURN_TLS_CERT_FILE: ${PBX_TURN_TLS_CERT_FILE:-/etc/letsencrypt/live/wss.td1.tekomi.vn/fullchain.pem}
+      PBX_TURN_TLS_KEY_FILE: ${PBX_TURN_TLS_KEY_FILE:-/etc/letsencrypt/live/wss.td1.tekomi.vn/privkey.pem}
+    volumes:
+      - ${PBX_TURN_CERTS_HOST_DIR:-/etc/letsencrypt}:/etc/letsencrypt:ro

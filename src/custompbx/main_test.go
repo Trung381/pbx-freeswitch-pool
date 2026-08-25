@@ -52,6 +52,28 @@ func TestTemporaryTURNAuthKeyRejectsInvalidCredentials(t *testing.T) {
 	}
 }
 
+func TestTurnTLSPort(t *testing.T) {
+	tests := []struct {
+		value string
+		want  int
+		ok    bool
+	}{
+		{value: "", want: 5349, ok: true},
+		{value: "5349", want: 5349, ok: true},
+		{value: "443", want: 443, ok: true},
+		{value: "0", ok: false},
+		{value: "65536", ok: false},
+		{value: "invalid", ok: false},
+	}
+
+	for _, test := range tests {
+		got, err := turnTLSPort(test.value)
+		if (err == nil) != test.ok || got != test.want {
+			t.Fatalf("turnTLSPort(%q) = %d, %v; want %d, ok=%t", test.value, got, err, test.want, test.ok)
+		}
+	}
+}
+
 func TestResolveFileUnderRoot(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "2026")
