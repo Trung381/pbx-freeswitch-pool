@@ -152,7 +152,7 @@ VOLUME ["/usr/local/freeswitch/db"]
 #VOLUME ["/tmp"]
 
 # Expose the necessary ports
-EXPOSE 5060/tcp 5060/udp 5080/tcp 5080/udp 8021/tcp 7443/tcp
+EXPOSE 5060/tcp 5060/udp 5066/tcp 5080/tcp 5080/udp 8021/tcp 7443/tcp
 EXPOSE 16384-16399/udp
 
 # Start FreeSWITCH
