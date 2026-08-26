@@ -5,6 +5,7 @@ import (
 	"custompbx/altStruct"
 	"custompbx/cache"
 	"custompbx/callwebhook"
+	"custompbx/cdrwriter"
 	"custompbx/cfg"
 	"custompbx/daemonCache"
 	"custompbx/intermediateDB"
@@ -768,6 +769,7 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 	var filterHeaders []string
 	eventMap := fsock.FSEventStrToMap(event, filterHeaders)
 	logDelayedChannelEvent(eventMap)
+	cdrwriter.Persist(eventMap)
 
 	cCache := pbxcache.GetChannelsCache()
 	channel := cCache.RemoveByUUID(eventMap[NameChannelUuid], eventMap[NameChannelOtherLegUuid])

@@ -8,7 +8,9 @@
         <load module="mod_xml_curl"/>
         <load module="mod_http_cache"/>
         <load module="mod_cdr_csv"/>
-        <load module="mod_cdr_pg_csv"/>
+        <!-- CDR persistence is handled by CustomPBX from ESL CHANNEL_DESTROY
+             events. It validates UTF-8 and uses parameterized PostgreSQL
+             queries, unlike mod_cdr_pg_csv which inserts raw SIP bytes. -->
         <load module="mod_event_socket"/>
         <load module="mod_sofia"/>
         <load module="mod_loopback"/>
