@@ -116,6 +116,7 @@ func main() {
 		} else if updated {
 			log.Println("Docker demo CDR database connection configured")
 		}
+		recordingstore.Start()
 
 		log.Println("ESL Connection and handlers")
 		go fsesl.ESLConnectKeeper(eventChannel, logsChannel)

@@ -37,6 +37,7 @@ var (
 	clientOnce sync.Once
 	client     *minio.Client
 	clientErr  error
+	startOnce  sync.Once
 )
 
 func loadConfig() config {
@@ -102,6 +103,55 @@ func QueueUpload(callUUID, localPath string) {
 	go upload(callUUID, localPath)
 }
 
+// Start reconciles the durable local spool. This covers a MinIO outage or a
+// CustomPBX restart between FreeSWITCH finishing the WAV and the asynchronous
+// upload succeeding. Existing local recordings are intentionally migrated too.
+func Start() {
+	if !Enabled() {
+		log.Println("recording object storage is disabled; retaining local recordings")
+		return
+	}
+	startOnce.Do(func() {
+		go func() {
+			retrySpool()
+			ticker := time.NewTicker(10 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				retrySpool()
+			}
+		}()
+	})
+}
+
+func retrySpool() {
+	if db.GetDB() == nil {
+		return
+	}
+	rows, err := db.GetDB().Query(`
+SELECT uuid::text, record_path
+FROM cdr
+WHERE record_path IS NOT NULL
+  AND recording_status IN ('local', 'pending', 'failed')
+ORDER BY end_stamp ASC
+LIMIT 100`)
+	if err != nil {
+		log.Printf("recording spool reconciliation query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var callUUID, localPath string
+		if err := rows.Scan(&callUUID, &localPath); err != nil {
+			log.Printf("recording spool reconciliation scan failed: %v", err)
+			continue
+		}
+		QueueUpload(callUUID, localPath)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("recording spool reconciliation rows failed: %v", err)
+	}
+}
+
 func upload(callUUID, localPath string) {
 	fileInfo, err := os.Stat(localPath)
 	if err != nil || !fileInfo.Mode().IsRegular() {
@@ -114,7 +164,7 @@ func upload(callUUID, localPath string) {
 		markFailure(callUUID, err)
 		return
 	}
-	key, err := objectKey(cfg.prefix, callUUID, path.Ext(fileInfo.Name()), time.Now())
+	key, err := objectKey(cfg.prefix, callUUID, path.Ext(fileInfo.Name()), fileInfo.ModTime())
 	if err != nil {
 		markFailure(callUUID, err)
 		return
