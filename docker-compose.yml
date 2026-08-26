@@ -58,6 +58,10 @@ services:
       - /var/log/freeswitch/log
       - /usr/local/freeswitch/db
       - freeswitch-recordings:/var/lib/freeswitch/recordings
+      # Keep the module list under version control. In particular, CDR database
+      # writes are owned by CustomPBX's UTF-8-safe ESL consumer, not FreeSWITCH's
+      # raw mod_cdr_pg_csv writer.
+      - ./docker/fs_conf/modules.conf.xml:/etc/freeswitch/autoload_configs/modules.conf.xml:ro
       - ./docker/fs_override/vars.xml:/etc/freeswitch/vars.xml
       - ./docker/fs_override/external.xml:/etc/freeswitch/sip_profiles/external.xml
       - ./docker/fs_override/internal.xml:/etc/freeswitch/sip_profiles/internal.xml
