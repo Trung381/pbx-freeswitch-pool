@@ -1,4 +1,4 @@
-import {Component, inject, signal, computed, effect} from '@angular/core';
+import {Component, inject, signal, computed, effect, OnInit} from '@angular/core';
 import {toSignal} from '@angular/core/rxjs-interop';
 import {select, Store} from '@ngrx/store';
 import {AppState, selectCDRState} from '../../store/app.states';
@@ -32,7 +32,7 @@ export interface IsortField {
   templateUrl: './cdr.component.html',
   styleUrls: ['./cdr.component.css']
 })
-export class CdrComponent { // Removed OnDestroy
+export class CdrComponent implements OnInit {
 
   readonly selectedTab = signal(0);
 
@@ -129,8 +129,20 @@ export class CdrComponent { // Removed OnDestroy
     }
   });
 
+  // CDR is an operational screen: users should see the latest page on entry
+  // without first having to press the legacy manual "Get records" button.
+  ngOnInit(): void {
+    this.getSettings();
+    this.getRecords();
+  }
+
   handlePageEvent(event: PageEvent) {
     this.pageEvent.set(event);
+    this.getRecords();
+  }
+
+  private reloadFirstPage(): void {
+    this.pageEvent.update(event => ({...event, pageIndex: 0}));
     this.getRecords();
   }
 
@@ -154,15 +166,14 @@ export class CdrComponent { // Removed OnDestroy
   }
 
   removeFilter(filterToRemove: IfilterField): void {
-    this.pageEvent.update(e => ({...e, pageIndex: 0}));
     this.filters.update(currentFilters => {
       // Find and remove the filter
       return currentFilters.filter(f => f !== filterToRemove);
     });
+    this.reloadFirstPage();
   }
 
   addSorter() {
-    this.pageEvent.update(e => ({...e, pageIndex: 0}));
     const sortCol = this.sortColumns;
     if (!sortCol) return;
 
@@ -175,11 +186,12 @@ export class CdrComponent { // Removed OnDestroy
       }
       return currentSort;
     });
+    this.reloadFirstPage();
   }
 
   clearSorting() {
-    this.pageEvent.update(e => ({...e, pageIndex: 0}));
     this.sortObject.set({fields: [], desc: false});
+    this.reloadFirstPage();
   }
 
   tabChanged(event: number) {
@@ -221,6 +233,7 @@ export class CdrComponent { // Removed OnDestroy
 
     if (currentFilter.field && currentFilter.operand && trimmedFilterValue) {
       this.filters.update(f => [...f, {...currentFilter, field_value: trimmedFilterValue}]);
+      this.reloadFirstPage();
     }
 
     this.filter.set({field: null, operand: null, field_value: null});
@@ -248,6 +261,7 @@ export class CdrComponent { // Removed OnDestroy
 
       this.toEditFilter.set(null);
       this.filter.set({field: null, operand: null, field_value: null});
+      this.reloadFirstPage();
     }
   }
 }

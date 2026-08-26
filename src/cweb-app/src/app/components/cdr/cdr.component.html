@@ -147,7 +147,7 @@
           [pageIndex]="pageEvent().pageIndex"
           [pageSize]="pageEvent().pageSize"
           [pageSizeOptions]="paginationScale"
-          (page)="pageEvent.set($event)">
+          (page)="handlePageEvent($event)">
         </app-paginator>
       }
     </div>
