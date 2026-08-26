@@ -50,14 +50,14 @@ services:
     networks:
       - local_network
     entrypoint: ["/bin/sh", "-ec"]
-    command: >-
-      until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}";
-      do sleep 2; done;
-      mc mb --ignore-existing "local/$${PBX_MINIO_BUCKET}";
-      mc anonymous set none "local/$${PBX_MINIO_BUCKET}";
-      mc admin policy create local pbx-recordings /policy/pbx-recordings-policy.json || true;
-      mc admin user add local "$${PBX_MINIO_ACCESS_KEY}" "$${PBX_MINIO_SECRET_KEY}" || true;
-      mc admin policy attach local pbx-recordings --user "$${PBX_MINIO_ACCESS_KEY}";
+    command:
+      - |
+        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done
+        mc mb --ignore-existing "local/$${PBX_MINIO_BUCKET}"
+        mc anonymous set none "local/$${PBX_MINIO_BUCKET}"
+        mc admin policy create local pbx-recordings /policy/pbx-recordings-policy.json || true
+        mc admin user add local "$${PBX_MINIO_ACCESS_KEY}" "$${PBX_MINIO_SECRET_KEY}" || true
+        mc admin policy attach local pbx-recordings --user "$${PBX_MINIO_ACCESS_KEY}"
 
   postgres:
     container_name: postgres-host
