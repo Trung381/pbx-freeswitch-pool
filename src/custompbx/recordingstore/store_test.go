@@ -33,3 +33,18 @@ func TestObjectKey(t *testing.T) {
 		t.Fatalf("object key = %q; want %q", got, want)
 	}
 }
+
+func TestSpoolPath(t *testing.T) {
+	for _, raw := range []string{
+		"/var/lib/freeswitch/recordings/call.wav",
+		"/app/recordings/call.wav",
+	} {
+		got, err := spoolPath(raw)
+		if err != nil || got != "/app/recordings/call.wav" {
+			t.Fatalf("spoolPath(%q) = %q, %v", raw, got, err)
+		}
+	}
+	if _, err := spoolPath("/var/lib/freeswitch/recordings/../secrets"); err == nil {
+		t.Fatal("expected traversal to be rejected")
+	}
+}

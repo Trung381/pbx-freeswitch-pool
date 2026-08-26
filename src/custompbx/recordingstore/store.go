@@ -22,6 +22,11 @@ import (
 
 const defaultPrefix = "pbx/recordings"
 
+const (
+	freeSwitchRecordingsDir = "/var/lib/freeswitch/recordings"
+	customPBXRecordingsDir  = "/app/recordings"
+)
+
 var errNotConfigured = errors.New("recording object storage is not configured")
 
 type config struct {
@@ -153,6 +158,11 @@ LIMIT 100`)
 }
 
 func upload(callUUID, localPath string) {
+	localPath, err := spoolPath(localPath)
+	if err != nil {
+		markFailure(callUUID, err)
+		return
+	}
 	fileInfo, err := os.Stat(localPath)
 	if err != nil || !fileInfo.Mode().IsRegular() {
 		markFailure(callUUID, fmt.Errorf("recording spool unavailable: %w", err))
@@ -188,6 +198,27 @@ func upload(callUUID, localPath string) {
 		time.Sleep(time.Duration(attempt*attempt) * time.Second)
 	}
 	markFailure(callUUID, lastErr)
+}
+
+// spoolPath maps the same Docker volume from FreeSWITCH's path namespace to
+// CustomPBX's mount point. It rejects traversal and arbitrary host paths even
+// though CDR fields are internally produced data.
+func spoolPath(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	var relative string
+	switch {
+	case strings.HasPrefix(raw, freeSwitchRecordingsDir+"/"):
+		relative = strings.TrimPrefix(raw, freeSwitchRecordingsDir+"/")
+	case strings.HasPrefix(raw, customPBXRecordingsDir+"/"):
+		relative = strings.TrimPrefix(raw, customPBXRecordingsDir+"/")
+	default:
+		return "", errors.New("recording path is outside the shared spool")
+	}
+	clean := path.Clean(relative)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
+		return "", errors.New("invalid recording spool path")
+	}
+	return path.Join(customPBXRecordingsDir, clean), nil
 }
 
 func markUploaded(callUUID, key string, size int64) error {
