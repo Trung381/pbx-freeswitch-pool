@@ -172,6 +172,12 @@ const (
 	NameChannelAccountcode           = "variable_accountcode"
 	NameChannelCallState             = "Channel-Call-State"
 	NameChannelCallUuid              = "variable_call_uuid"
+	NameChannelLinkedID              = "variable_linked_id"
+	NameChannelOriginatingLegUUID    = "variable_originating_leg_uuid"
+	NameChannelOriginationUUID       = "variable_origination_uuid"
+	NameChannelSignalBond            = "variable_signal_bond"
+	NameChannelSIPFromUser           = "variable_sip_from_user"
+	NameChannelSIPToUser             = "variable_sip_to_user"
 	NameChannelHostname              = "FreeSWITCH-Hostname"
 	NameChannelOtherLegUuid          = "Other-Leg-Unique-ID"
 	NameChannelCalleeIdName          = "Caller-Callee-ID-Name"
@@ -788,7 +794,12 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 
 func publishCallEvent(eventName, status string, eventMap map[string]string, channel *mainStruct.Channel) {
 	legUUID := eventMap[NameChannelUuid]
-	rootCallID := eventMap[NameChannelCallUuid]
+	rootCallID := firstPresent(
+		eventMap[NameChannelLinkedID],
+		eventMap[NameChannelCallUuid],
+		eventMap[NameChannelOriginatingLegUUID],
+		eventMap[NameChannelOriginationUUID],
+	)
 	direction := eventMap[NameChannelDirection]
 	fromNumber := eventMap[NameChannelCallerNumber]
 	toNumber := eventMap[NameChannelCallerDest]
@@ -816,6 +827,7 @@ func publishCallEvent(eventName, status string, eventMap map[string]string, chan
 	if rootCallID == "" {
 		rootCallID = legUUID
 	}
+	extension, businessDirection, customerNumber := callBusinessMetadata(eventMap, channel, fromNumber, toNumber)
 
 	startedAt, startedSeconds := freeSwitchTimestamp(startedEpoch)
 	answeredAt, _ := freeSwitchTimestamp(eventMap[NameCallerChannelAnswerTIme])
@@ -826,22 +838,75 @@ func publishCallEvent(eventName, status string, eventMap map[string]string, chan
 	}
 
 	callwebhook.Publish(callwebhook.Event{
-		EventID:      eventName + ":" + legUUID,
-		Event:        eventName,
-		PBXCallID:    rootCallID,
-		LegUUID:      legUUID,
-		Direction:    direction,
-		FromNumber:   fromNumber,
-		ToNumber:     toNumber,
-		Extension:    extensionFromChannel(channel),
-		Status:       status,
-		StartedAt:    startedAt,
-		AnsweredAt:   answeredAt,
-		EndedAt:      endedAt,
-		Duration:     duration,
-		HangupCause:  eventMap[NameChannelHangupCause],
-		RecordingURL: eventMap[NameChannelRecordURL],
+		EventID:           eventName + ":" + legUUID,
+		Event:             eventName,
+		PBXCallID:         rootCallID,
+		LinkedID:          rootCallID,
+		LegUUID:           legUUID,
+		Direction:         direction,
+		BusinessDirection: businessDirection,
+		FromNumber:        fromNumber,
+		ToNumber:          toNumber,
+		CustomerNumber:    customerNumber,
+		Extension:         extension,
+		Status:            status,
+		StartedAt:         startedAt,
+		AnsweredAt:        answeredAt,
+		EndedAt:           endedAt,
+		Duration:          duration,
+		HangupCause:       eventMap[NameChannelHangupCause],
+		RecordingURL:      eventMap[NameChannelRecordURL],
 	})
+}
+
+func firstPresent(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func callBusinessMetadata(eventMap map[string]string, channel *mainStruct.Channel, fromNumber, toNumber string) (string, string, string) {
+	extension := firstPresent(
+		extensionFromChannel(channel),
+		eventMap[NameChannelSIPFromUser],
+		eventMap[NameChannelSIPToUser],
+	)
+	if !looksLikeExtension(extension) {
+		extension = ""
+	}
+
+	if looksLikeExtension(fromNumber) {
+		return fromNumber, "outbound", toNumber
+	}
+	if looksLikeExtension(toNumber) {
+		return toNumber, "inbound", fromNumber
+	}
+	if extension == "" {
+		return "", "", ""
+	}
+	if extension == fromNumber {
+		return extension, "outbound", toNumber
+	}
+	if extension == toNumber {
+		return extension, "inbound", fromNumber
+	}
+	return extension, "", ""
+}
+
+func looksLikeExtension(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 || len(value) > 6 {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func freeSwitchTimestamp(value string) (string, int64) {

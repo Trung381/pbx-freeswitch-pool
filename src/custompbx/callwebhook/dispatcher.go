@@ -25,28 +25,37 @@ const (
 )
 
 type Event struct {
-	EventID      string `json:"event_id"`
-	Event        string `json:"event"`
-	PBXCallID    string `json:"pbx_call_id"`
-	LegUUID      string `json:"leg_uuid"`
-	Direction    string `json:"direction,omitempty"`
-	FromNumber   string `json:"from_number,omitempty"`
-	ToNumber     string `json:"to_number,omitempty"`
-	Extension    string `json:"extension,omitempty"`
-	Status       string `json:"status,omitempty"`
-	StartedAt    string `json:"started_at,omitempty"`
-	AnsweredAt   string `json:"answered_at,omitempty"`
-	EndedAt      string `json:"ended_at,omitempty"`
-	Duration     int64  `json:"duration,omitempty"`
-	HangupCause  string `json:"hangup_cause,omitempty"`
-	RecordingURL string `json:"recording_url,omitempty"`
+	EventID           string `json:"event_id"`
+	Event             string `json:"event"`
+	PBXID             string `json:"pbx_id,omitempty"`
+	SIPDomain         string `json:"sip_domain,omitempty"`
+	PBXCallID         string `json:"pbx_call_id"`
+	LinkedID          string `json:"linked_id,omitempty"`
+	LegUUID           string `json:"leg_uuid"`
+	Direction         string `json:"direction,omitempty"`
+	BusinessDirection string `json:"business_direction,omitempty"`
+	FromNumber        string `json:"from_number,omitempty"`
+	ToNumber          string `json:"to_number,omitempty"`
+	CustomerNumber    string `json:"customer_number,omitempty"`
+	Extension         string `json:"extension,omitempty"`
+	Status            string `json:"status,omitempty"`
+	StartedAt         string `json:"started_at,omitempty"`
+	AnsweredAt        string `json:"answered_at,omitempty"`
+	EndedAt           string `json:"ended_at,omitempty"`
+	Duration          int64  `json:"duration,omitempty"`
+	HangupCause       string `json:"hangup_cause,omitempty"`
+	RecordingURL      string `json:"recording_url,omitempty"`
 }
 
 type Dispatcher struct {
-	url    string
-	secret string
-	client *http.Client
-	queue  chan Event
+	url       string
+	secret    string
+	pbxID     string
+	sipDomain string
+	client    *http.Client
+	queue     chan Event
+	seenMu    sync.Mutex
+	seen      map[string]time.Time
 }
 
 var (
@@ -71,10 +80,13 @@ func Start(config cfg.CallWebhook) {
 	}
 
 	dispatcher := &Dispatcher{
-		url:    strings.TrimSpace(config.URL),
-		secret: config.Secret,
-		client: &http.Client{Timeout: timeout},
-		queue:  make(chan Event, queueSize),
+		url:       strings.TrimSpace(config.URL),
+		secret:    config.Secret,
+		pbxID:     strings.TrimSpace(os.Getenv("PBX_CALL_WEBHOOK_PBX_ID")),
+		sipDomain: strings.TrimSpace(os.Getenv("PBX_CALL_WEBHOOK_SIP_DOMAIN")),
+		client:    &http.Client{Timeout: timeout},
+		queue:     make(chan Event, queueSize),
+		seen:      make(map[string]time.Time),
 	}
 	activeMu.Lock()
 	active = dispatcher
@@ -93,11 +105,47 @@ func Publish(event Event) {
 	}
 
 	event = sanitize(event)
+	if event.PBXID == "" {
+		event.PBXID = dispatcher.pbxID
+	}
+	if event.SIPDomain == "" {
+		event.SIPDomain = dispatcher.sipDomain
+	}
+	if event.LinkedID == "" {
+		event.LinkedID = event.PBXCallID
+	}
+	if !dispatcher.markEventSeen(event.EventID, time.Now()) {
+		return
+	}
 	select {
 	case dispatcher.queue <- event:
 	default:
 		log.Printf("Call webhook queue full; dropped event_id=%s event=%s", event.EventID, event.Event)
 	}
+}
+
+const eventDedupeTTL = 10 * time.Minute
+
+func (d *Dispatcher) markEventSeen(eventID string, now time.Time) bool {
+	if eventID == "" {
+		return true
+	}
+
+	d.seenMu.Lock()
+	defer d.seenMu.Unlock()
+	if d.seen == nil {
+		d.seen = make(map[string]time.Time)
+	}
+	if seenAt, exists := d.seen[eventID]; exists && now.Sub(seenAt) < eventDedupeTTL {
+		return false
+	}
+	for id, seenAt := range d.seen {
+		if now.Sub(seenAt) >= eventDedupeTTL {
+			delete(d.seen, id)
+		}
+	}
+	d.seen[eventID] = now
+	return true
 }
 
 func (d *Dispatcher) run() {
@@ -144,11 +192,16 @@ func signature(secret, timestamp string, body []byte) string {
 func sanitize(event Event) Event {
 	event.EventID = validUTF8(event.EventID)
 	event.Event = validUTF8(event.Event)
+	event.PBXID = validUTF8(event.PBXID)
+	event.SIPDomain = validUTF8(event.SIPDomain)
 	event.PBXCallID = validUTF8(event.PBXCallID)
+	event.LinkedID = validUTF8(event.LinkedID)
 	event.LegUUID = validUTF8(event.LegUUID)
 	event.Direction = validUTF8(event.Direction)
+	event.BusinessDirection = validUTF8(event.BusinessDirection)
 	event.FromNumber = validUTF8(event.FromNumber)
 	event.ToNumber = validUTF8(event.ToNumber)
+	event.CustomerNumber = validUTF8(event.CustomerNumber)
 	event.Extension = validUTF8(event.Extension)
 	event.Status = validUTF8(event.Status)
 	event.StartedAt = validUTF8(event.StartedAt)

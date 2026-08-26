@@ -78,3 +78,19 @@ func TestDispatcherRejectsNonSuccessStatus(t *testing.T) {
 		t.Fatal("expected non-success HTTP status to return an error")
 	}
 }
+
+func TestDispatcherDeduplicatesEventIDsWithinTTL(t *testing.T) {
+	t.Parallel()
+
+	dispatcher := &Dispatcher{seen: make(map[string]time.Time)}
+	now := time.Now()
+	if !dispatcher.markEventSeen("call.completed:leg-1", now) {
+		t.Fatal("first event should be accepted")
+	}
+	if dispatcher.markEventSeen("call.completed:leg-1", now.Add(time.Second)) {
+		t.Fatal("duplicate event should be rejected")
+	}
+	if !dispatcher.markEventSeen("call.completed:leg-1", now.Add(eventDedupeTTL)) {
+		t.Fatal("event should be accepted after the dedupe TTL")
+	}
+}
