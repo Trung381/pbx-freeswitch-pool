@@ -1,0 +1,207 @@
+// Package recordingstore moves completed FreeSWITCH recordings to private S3
+// object storage. Objects are never exposed directly: the authenticated CDR
+// endpoint streams them back to a signed-in CustomPBX user.
+package recordingstore
+
+import (
+	"context"
+	"custompbx/db"
+	"errors"
+	"fmt"
+	"log"
+	"net/url"
+	"os"
+	"path"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+)
+
+const defaultPrefix = "pbx/recordings"
+
+var errNotConfigured = errors.New("recording object storage is not configured")
+
+type config struct {
+	endpoint  string
+	accessKey string
+	secretKey string
+	bucket    string
+	prefix    string
+	secure    bool
+}
+
+var (
+	clientOnce sync.Once
+	client     *minio.Client
+	clientErr  error
+)
+
+func loadConfig() config {
+	cfg := config{
+		endpoint:  strings.TrimSpace(os.Getenv("PBX_MINIO_ENDPOINT")),
+		accessKey: strings.TrimSpace(os.Getenv("PBX_MINIO_ACCESS_KEY")),
+		secretKey: os.Getenv("PBX_MINIO_SECRET_KEY"),
+		bucket:    strings.TrimSpace(os.Getenv("PBX_MINIO_BUCKET")),
+		prefix:    strings.Trim(strings.TrimSpace(os.Getenv("PBX_MINIO_PREFIX")), "/"),
+		secure:    strings.EqualFold(strings.TrimSpace(os.Getenv("PBX_MINIO_SECURE")), "true"),
+	}
+	if cfg.prefix == "" {
+		cfg.prefix = defaultPrefix
+	}
+	return cfg
+}
+
+// Enabled is intentionally all-or-nothing. A partly configured storage
+// backend must leave the local spool untouched instead of silently losing a
+// recording.
+func Enabled() bool {
+	cfg := loadConfig()
+	return cfg.endpoint != "" && cfg.accessKey != "" && cfg.secretKey != "" && cfg.bucket != ""
+}
+
+func getClient() (*minio.Client, config, error) {
+	cfg := loadConfig()
+	if !Enabled() {
+		return nil, cfg, errNotConfigured
+	}
+	clientOnce.Do(func() {
+		client, clientErr = minio.New(cfg.endpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(cfg.accessKey, cfg.secretKey, ""),
+			Secure: cfg.secure,
+		})
+	})
+	return client, cfg, clientErr
+}
+
+func objectKey(prefix, callUUID, extension string, now time.Time) (string, error) {
+	if strings.Contains(callUUID, "/") || strings.Contains(callUUID, "..") || callUUID == "" {
+		return "", errors.New("invalid call UUID")
+	}
+	if extension == "" {
+		extension = ".wav"
+	}
+	return fmt.Sprintf("%s/%04d/%02d/%02d/%s%s", prefix, now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), callUUID, extension), nil
+}
+
+// QueueUpload uploads on a detached worker because the FreeSWITCH ESL event
+// loop must never wait on object storage. The local file remains the durable
+// retry spool until an upload succeeds.
+func QueueUpload(callUUID, localPath string) {
+	if !Enabled() || strings.TrimSpace(localPath) == "" {
+		return
+	}
+	if db.GetDB() != nil {
+		if _, err := db.GetDB().Exec(`UPDATE cdr SET recording_status = 'pending', recording_error = NULL WHERE uuid = $1::uuid`, callUUID); err != nil {
+			log.Printf("recording upload pending metadata update uuid=%s: %v", callUUID, err)
+			return
+		}
+	}
+	go upload(callUUID, localPath)
+}
+
+func upload(callUUID, localPath string) {
+	fileInfo, err := os.Stat(localPath)
+	if err != nil || !fileInfo.Mode().IsRegular() {
+		markFailure(callUUID, fmt.Errorf("recording spool unavailable: %w", err))
+		return
+	}
+
+	client, cfg, err := getClient()
+	if err != nil {
+		markFailure(callUUID, err)
+		return
+	}
+	key, err := objectKey(cfg.prefix, callUUID, path.Ext(fileInfo.Name()), time.Now())
+	if err != nil {
+		markFailure(callUUID, err)
+		return
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= 5; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		_, lastErr = client.FPutObject(ctx, cfg.bucket, key, localPath, minio.PutObjectOptions{ContentType: "audio/wav"})
+		cancel()
+		if lastErr == nil {
+			if err = markUploaded(callUUID, key, fileInfo.Size()); err != nil {
+				log.Printf("recording upload metadata failed uuid=%s: %v", callUUID, err)
+				return
+			}
+			if err = os.Remove(localPath); err != nil {
+				log.Printf("recording spool cleanup failed uuid=%s: %v", callUUID, err)
+			}
+			return
+		}
+		time.Sleep(time.Duration(attempt*attempt) * time.Second)
+	}
+	markFailure(callUUID, lastErr)
+}
+
+func markUploaded(callUUID, key string, size int64) error {
+	_, err := db.GetDB().Exec(`
+UPDATE cdr
+SET recording_status = 'uploaded', recording_object_key = $2,
+    recording_size_bytes = $3, recording_uploaded_at = NOW(), recording_error = NULL
+WHERE uuid = $1::uuid`, callUUID, key, size)
+	return err
+}
+
+func markFailure(callUUID string, cause error) {
+	if db.GetDB() == nil {
+		return
+	}
+	_, err := db.GetDB().Exec(`
+UPDATE cdr SET recording_status = 'failed', recording_error = $2
+WHERE uuid = $1::uuid`, callUUID, truncateError(cause))
+	if err != nil {
+		log.Printf("recording upload failure metadata update uuid=%s: %v", callUUID, err)
+	}
+}
+
+func truncateError(err error) string {
+	if err == nil {
+		return "unknown upload failure"
+	}
+	message := err.Error()
+	if len(message) > 512 {
+		return message[:512]
+	}
+	return message
+}
+
+// ServeHTTP is split out to keep the storage package independent from routes.
+func ServeHTTP(ctx context.Context, key string) (*minio.Object, minio.ObjectInfo, error) {
+	client, cfg, err := getClient()
+	if err != nil {
+		return nil, minio.ObjectInfo{}, err
+	}
+	key, err = validatedObjectKey(cfg.prefix, key)
+	if err != nil {
+		return nil, minio.ObjectInfo{}, err
+	}
+	object, err := client.GetObject(ctx, cfg.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, minio.ObjectInfo{}, err
+	}
+	info, err := object.Stat()
+	if err != nil {
+		_ = object.Close()
+		return nil, minio.ObjectInfo{}, err
+	}
+	return object, info, nil
+}
+
+func validatedObjectKey(prefix, raw string) (string, error) {
+	raw, err := url.PathUnescape(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	clean := path.Clean(raw)
+	if clean == "." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) || clean != raw || !strings.HasPrefix(clean, prefix+"/") {
+		return "", errors.New("invalid recording object key")
+	}
+	return clean, nil
+}

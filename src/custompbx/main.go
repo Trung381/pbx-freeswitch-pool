@@ -21,6 +21,7 @@ import (
 	"custompbx/metrics"
 	"custompbx/nocache"
 	"custompbx/pbxcache"
+	"custompbx/recordingstore"
 	"custompbx/web"
 	"custompbx/webcache"
 	"custompbx/xmlcurl"
@@ -324,6 +325,20 @@ func Web(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		if route3 != "" {
+			objectKey := strings.Join([]string{route3, route4, route5, route6, route7, route8, route9}, "/")
+			objectKey = strings.TrimRight(objectKey, "/")
+			if recordingstore.Enabled() && strings.HasPrefix(objectKey, "pbx/recordings/") {
+				object, info, objectErr := recordingstore.ServeHTTP(r.Context(), objectKey)
+				if objectErr != nil {
+					http.Error(rw, "recording not found", http.StatusNotFound)
+					return
+				}
+				defer object.Close()
+				rw.Header().Set("Content-Type", "audio/wav")
+				rw.Header().Set("X-Content-Type-Options", "nosniff")
+				http.ServeContent(rw, r, filepath.Base(objectKey), info.LastModified, object)
+				return
+			}
 			servePath := webcache.GetWebSetting(webcache.CdrFileServerPath)
 			if servePath != "" && servePath != "/" {
 				servePath, err = resolveFileUnderRoot(servePath, route3, route4, route5, route6, route7, route8, route9)

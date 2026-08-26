@@ -7,6 +7,7 @@ package cdrwriter
 
 import (
 	"custompbx/db"
+	"custompbx/recordingstore"
 	"database/sql"
 	"log"
 	"net"
@@ -75,6 +76,10 @@ WHERE NOT EXISTS (SELECT 1 FROM cdr WHERE uuid = $12::uuid)
 		record.sipHangupDisposition, record.ani, record.recordStereo, record.recordPath, record.recordName)
 	if err != nil {
 		log.Printf("CDR persistence failed uuid=%s: %v", record.uuid, err)
+		return
+	}
+	if record.recordPath.Valid {
+		recordingstore.QueueUpload(record.uuid, record.recordPath.String)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"log"
 	"net"
+	"path"
 	"strings"
 )
 
@@ -31,6 +32,38 @@ const (
 	ConstNotEqual = "!="
 	ConstNotLike  = "NOT LIKE"
 )
+
+const freeSwitchRecordingsDir = "/var/lib/freeswitch/recordings"
+
+// managedCDRColumns is the explicit projection written by cdrwriter. The CDR
+// screen must not depend on mod_cdr_pg_csv's XML schema: that module accepts
+// raw SIP bytes and is deliberately not loaded in this deployment.
+var managedCDRColumns = []string{
+	"id",
+	"uuid",
+	"bleg_uuid",
+	"caller_id_name",
+	"caller_id_number",
+	"destination_number",
+	"context",
+	"start_stamp",
+	"answer_stamp",
+	"end_stamp",
+	"duration",
+	"billsec",
+	"hangup_cause",
+	"read_codec",
+	"write_codec",
+	"sip_hangup_disposition",
+	"ani",
+	"record_stereo",
+	"record_path",
+	"record_name",
+	"recording_status",
+	"recording_object_key",
+	"recording_size_bytes",
+	"recording_uploaded_at",
+}
 
 func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Order) ([]map[string]interface{}, error) {
 	if !daemonCache.State.CdrDatabaseConnection || db == nil {
@@ -121,8 +154,19 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 		}
 	}
 
+	// The managed writer persists into the same cdr table as the legacy module,
+	// but intentionally has no mod_cdr_pg_csv schema rows. Fall back to the
+	// writer's allowlisted projection so the UI remains independent of that
+	// retired module.
+	if len(fieldsArr) == 0 && table == "cdr" {
+		fieldsArr = append(fieldsArr, managedCDRColumns...)
+	}
 	if len(fieldsArr) == 0 {
 		return nil, errors.New("no columns to select")
+	}
+	allowedFields := make(map[string]bool, len(fieldsArr))
+	for _, field := range fieldsArr {
+		allowedFields[field] = true
 	}
 	fieldsArr = append(fieldsArr, ConstTotalSql)
 
@@ -168,13 +212,22 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 		}
 	}
 	if len(order.Fields) > 0 {
-		if order.Desc {
-			lastOne := order.Fields[len(order.Fields)-1]
-			lastOne = lastOne + " DESC"
-			order.Fields[len(order.Fields)-1] = lastOne
+		orderFields := make([]string, 0, len(order.Fields))
+		for _, field := range order.Fields {
+			if allowedFields[field] {
+				orderFields = append(orderFields, field)
+			}
 		}
-		sql = sql.OrderBy(order.Fields...)
+		if len(orderFields) > 0 {
+			if order.Desc {
+				lastOne := orderFields[len(orderFields)-1]
+				lastOne = lastOne + " DESC"
+				orderFields[len(orderFields)-1] = lastOne
+			}
+			sql = sql.OrderBy(orderFields...)
+		}
 	}
+
 	query, args, _ := sql.ToSql()
 	log.Println(query)
 	log.Println(args)
@@ -277,16 +330,45 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 				result[s] = v
 			}
 		*/
-		replaceField, ok := result[cdrRecordColumn]
-		if ok {
-			var intFace interface{}
-			intFace = strings.Replace(fmt.Sprintf("%v", replaceField), cdrRecordPath, "./cdr/records/", 1)
-			if replaceField == intFace {
-				intFace = "./cdr/records/" + intFace.(string)
+		if objectKey, ok := result["recording_object_key"]; ok && objectKey != nil {
+			if recordingURL, ok := recordingRoute(fmt.Sprintf("%v", objectKey), cdrRecordPath); ok {
+				result[cdrRecordColumn] = recordingURL
 			}
-			result[cdrRecordColumn] = &intFace
+		} else if replaceField, ok := result[cdrRecordColumn]; ok {
+			if recordingURL, ok := recordingRoute(fmt.Sprintf("%v", replaceField), cdrRecordPath); ok {
+				result[cdrRecordColumn] = recordingURL
+			}
 		}
 		total = append(total, result)
 	}
 	return total, nil
+}
+
+// recordingRoute converts a CDR file reference to the authenticated CDR media
+// endpoint. Legacy rows use FreeSWITCH's mount path, while CustomPBX serves the
+// same Docker volume from /app/recordings. Only a relative path under either
+// known root is accepted.
+func recordingRoute(recordPath, servedRoot string) (string, bool) {
+	recordPath = strings.TrimSpace(recordPath)
+	servedRoot = strings.TrimSuffix(strings.TrimSpace(servedRoot), "/")
+	if recordPath == "" || servedRoot == "" || servedRoot == "/" {
+		return "", false
+	}
+
+	var relativePath string
+	switch {
+	case strings.HasPrefix(recordPath, servedRoot+"/"):
+		relativePath = strings.TrimPrefix(recordPath, servedRoot+"/")
+	case strings.HasPrefix(recordPath, freeSwitchRecordingsDir+"/"):
+		relativePath = strings.TrimPrefix(recordPath, freeSwitchRecordingsDir+"/")
+	default:
+		// A relative path is already portable across the shared recordings volume.
+		relativePath = recordPath
+	}
+
+	cleanPath := path.Clean(relativePath)
+	if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, "../") || path.IsAbs(cleanPath) {
+		return "", false
+	}
+	return "./cdr/records/" + cleanPath, true
 }

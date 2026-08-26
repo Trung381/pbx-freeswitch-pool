@@ -118,12 +118,50 @@ func Migrate(switchName string) (bool, error) {
 		}
 		updated = true
 		fallthrough
+	case "0.3.1":
+		log.Println("Updating schema from 0.3.1")
+		err = migrateForV0v3v2(instanceId)
+		if err != nil {
+			return false, err
+		}
+		updated = true
+		fallthrough
 	case mainStruct.Version:
 		return updated, nil
 	}
 
 	err = UpdateVersion(instanceId)
 	return updated, err
+}
+
+func migrateForV0v3v2(instanceId int64) error {
+	if instanceId == 0 {
+		return errors.New("no id")
+	}
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	statements := []string{
+		"ALTER TABLE IF EXISTS cdr ADD COLUMN IF NOT EXISTS recording_status varchar NOT NULL DEFAULT 'local'",
+		"ALTER TABLE IF EXISTS cdr ADD COLUMN IF NOT EXISTS recording_object_key varchar",
+		"ALTER TABLE IF EXISTS cdr ADD COLUMN IF NOT EXISTS recording_size_bytes bigint",
+		"ALTER TABLE IF EXISTS cdr ADD COLUMN IF NOT EXISTS recording_uploaded_at timestamp with time zone",
+		"ALTER TABLE IF EXISTS cdr ADD COLUMN IF NOT EXISTS recording_error varchar",
+		"CREATE INDEX IF NOT EXISTS cdr_recording_object_key_idx ON cdr(recording_object_key) WHERE recording_object_key IS NOT NULL",
+	}
+	for _, statement := range statements {
+		if _, err = tx.ExecContext(ctx, statement); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	if err = UpdateVersionRequest(instanceId, tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func migrateVertoProfileParameterSecureUniqueness() (bool, error) {
