@@ -21,6 +21,7 @@ import (
 	"custompbx/metrics"
 	"custompbx/nocache"
 	"custompbx/pbxcache"
+	"custompbx/recordingapi"
 	"custompbx/recordingstore"
 	"custompbx/web"
 	"custompbx/webcache"
@@ -139,6 +140,9 @@ func main() {
 	configureMiddleware(rWeb)
 	rWeb.Get(cfg.CustomPbx.Web.Route, web.StartWS)
 	rWeb.Get("/api/v1/ws/metrics", web.HubMetrics)
+	rWeb.Get("/api/v1/pbx/recordings/{uuid}", func(w http.ResponseWriter, r *http.Request) {
+		recordingapi.Serve(w, r, chi.URLParam(r, "uuid"))
+	})
 	rWeb.Post("/api/v1", web.PostAPIRequest)
 	configureStaticRoutes(rWeb)
 

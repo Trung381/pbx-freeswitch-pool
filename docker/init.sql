@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS cdr
     recording_object_key   varchar,
     recording_size_bytes   bigint,
     recording_uploaded_at  timestamp with time zone,
-    recording_error        varchar
+    recording_error        varchar,
+    linked_id              varchar
 );
 
 CREATE INDEX IF NOT EXISTS cdr_recording_object_key_idx ON cdr(recording_object_key) WHERE recording_object_key IS NOT NULL;

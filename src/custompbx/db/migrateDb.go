@@ -126,12 +126,39 @@ func Migrate(switchName string) (bool, error) {
 		}
 		updated = true
 		fallthrough
+	case "0.3.2":
+		log.Println("Updating schema from 0.3.2")
+		err = migrateForV0v3v3(instanceId)
+		if err != nil {
+			return false, err
+		}
+		updated = true
+		fallthrough
 	case mainStruct.Version:
 		return updated, nil
 	}
 
 	err = UpdateVersion(instanceId)
 	return updated, err
+}
+
+func migrateForV0v3v3(instanceId int64) error {
+	if instanceId == 0 {
+		return errors.New("no id")
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec("ALTER TABLE IF EXISTS cdr ADD COLUMN IF NOT EXISTS linked_id varchar"); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err = UpdateVersionRequest(instanceId, tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func migrateForV0v3v2(instanceId int64) error {

@@ -5,6 +5,7 @@ package recordingstore
 
 import (
 	"context"
+	"custompbx/callwebhook"
 	"custompbx/db"
 	"errors"
 	"fmt"
@@ -227,6 +228,21 @@ UPDATE cdr
 SET recording_status = 'uploaded', recording_object_key = $2,
     recording_size_bytes = $3, recording_uploaded_at = NOW(), recording_error = NULL
 WHERE uuid = $1::uuid`, callUUID, key, size)
+	if err == nil {
+		var linkedID string
+		_ = db.GetDB().QueryRow("SELECT COALESCE(linked_id, uuid::text) FROM cdr WHERE uuid = $1::uuid", callUUID).Scan(&linkedID)
+		baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PBX_RECORDING_API_BASE_URL")), "/")
+		if baseURL != "" {
+			callwebhook.Publish(callwebhook.Event{
+				EventID:      "call.recording_ready:" + callUUID,
+				Event:        "call.recording_ready",
+				PBXCallID:    linkedID,
+				LinkedID:     linkedID,
+				LegUUID:      callUUID,
+				RecordingURL: baseURL + "/api/v1/pbx/recordings/" + callUUID,
+			})
+		}
+	}
 	return err
 }
 

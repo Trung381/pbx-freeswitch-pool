@@ -47,6 +47,7 @@ type record struct {
 	recordStereo         sql.NullString
 	recordPath           sql.NullString
 	recordName           sql.NullString
+	linkedID             sql.NullString
 }
 
 // Persist stores one A-leg CDR. It intentionally owns the FreeSWITCH ->
@@ -62,18 +63,18 @@ INSERT INTO cdr (
   local_ip_v4, caller_id_name, caller_id_number, destination_number, context,
   start_stamp, answer_stamp, end_stamp, duration, billsec, hangup_cause,
   uuid, bleg_uuid, accountcode, read_codec, write_codec,
-  sip_hangup_disposition, ani, record_stereo, record_path, record_name
+  sip_hangup_disposition, ani, record_stereo, record_path, record_name, linked_id
 )
 SELECT
   $1, $2, $3, $4, $5,
   $6, $7, $8, $9, $10, $11,
   $12::uuid, $13::uuid, $14, $15, $16,
-  $17, $18, $19, $20, $21
+  $17, $18, $19, $20, $21, $22
 WHERE NOT EXISTS (SELECT 1 FROM cdr WHERE uuid = $12::uuid)
 `, record.localIP, record.callerIDName, record.callerIDNumber, record.destinationNumber, record.context,
 		record.startedAt, record.answeredAt, record.endedAt, record.duration, record.billsec, record.hangupCause,
 		record.uuid, record.blegUUID, record.accountCode, record.readCodec, record.writeCodec,
-		record.sipHangupDisposition, record.ani, record.recordStereo, record.recordPath, record.recordName)
+		record.sipHangupDisposition, record.ani, record.recordStereo, record.recordPath, record.recordName, record.linkedID)
 	if err != nil {
 		log.Printf("CDR persistence failed uuid=%s: %v", record.uuid, err)
 		return
@@ -132,6 +133,7 @@ func buildRecord(event map[string]string) (record, bool) {
 		recordStereo:         nullable(value(event, "variable_RECORD_STEREO")),
 		recordPath:           nullable(firstValue(event, "variable_record_path", "variable_recording_url")),
 		recordName:           nullable(value(event, "variable_record_name")),
+		linkedID:             nullable(firstValue(event, "variable_linked_id", "variable_call_uuid")),
 	}, true
 }
 
