@@ -134,12 +134,68 @@ func Migrate(switchName string) (bool, error) {
 		}
 		updated = true
 		fallthrough
+	case "0.3.3":
+		log.Println("Updating schema from 0.3.3")
+		err = migrateForV0v3v4(instanceId)
+		if err != nil {
+			return false, err
+		}
+		updated = true
+		fallthrough
 	case mainStruct.Version:
 		return updated, nil
 	}
 
 	err = UpdateVersion(instanceId)
 	return updated, err
+}
+
+// migrateForV0v3v4 enables FreeSWITCH multi-registration on the internal
+// Sofia profile served through XML-CURL. The profile is database-backed, so
+// changing only /etc/freeswitch/sip_profiles/internal.xml has no effect when
+// CustomPBX is the active configuration provider.
+func migrateForV0v3v4(instanceId int64) error {
+	if instanceId == 0 {
+		return errors.New("no id")
+	}
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+INSERT INTO config_sofia_profile_parameters
+  (parent_id, position, enabled, param_name, param_value, description)
+SELECT
+  profile.id,
+  COALESCE((
+    SELECT MAX(parameter.position) + 1
+    FROM config_sofia_profile_parameters parameter
+    WHERE parameter.parent_id = profile.id
+  ), 1),
+  TRUE,
+  'multiple-registrations',
+  'contact',
+  'Allow one extension to ring all registered devices'
+FROM config_sofia_profiles profile
+WHERE profile.param_name = 'internal'
+  AND profile.enabled = TRUE
+ON CONFLICT (param_name, parent_id) DO UPDATE
+SET param_value = EXCLUDED.param_value,
+    enabled = TRUE,
+    description = EXCLUDED.description`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err = UpdateVersionRequest(instanceId, tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func migrateForV0v3v3(instanceId int64) error {
