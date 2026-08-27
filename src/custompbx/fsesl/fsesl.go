@@ -795,6 +795,15 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 }
 
 func publishCallEvent(eventName, status string, eventMap map[string]string, channel *mainStruct.Channel) {
+	// A forked call creates one inbound (originating) leg plus an outbound leg
+	// for every registered contact. Publishing every outbound leg makes a
+	// cancelled sibling look like a missed business call in Chatwoot after a
+	// different device has answered. The inbound/originating leg is the
+	// authoritative lifecycle and is also the one used by CDR persistence.
+	if !isPrimaryCallLeg(eventMap) {
+		return
+	}
+
 	legUUID := eventMap[NameChannelUuid]
 	rootCallID := firstPresent(
 		eventMap[NameChannelLinkedID],
@@ -859,6 +868,20 @@ func publishCallEvent(eventName, status string, eventMap map[string]string, chan
 		HangupCause:       eventMap[NameChannelHangupCause],
 		RecordingURL:      eventMap[NameChannelRecordURL],
 	})
+}
+
+func isPrimaryCallLeg(eventMap map[string]string) bool {
+	// Calls arriving from an extension, carrier, or gateway enter FreeSWITCH on
+	// an inbound A-leg. Forked device contacts are outbound B-legs and point
+	// back to the originating UUID. Retain an unpaired outbound leg as a safe
+	// fallback for originate-style calls where no A-leg exists.
+	if eventMap[NameChannelDirection] != "outbound" {
+		return true
+	}
+
+	return eventMap[NameChannelOtherLegUuid] == "" &&
+		eventMap[NameChannelOriginatingLegUUID] == "" &&
+		eventMap[NameChannelOriginationUUID] == ""
 }
 
 func firstPresent(values ...string) string {

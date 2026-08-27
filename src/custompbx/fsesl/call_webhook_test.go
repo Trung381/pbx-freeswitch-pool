@@ -33,3 +33,46 @@ func TestFirstPresentReturnsCanonicalLinkedID(t *testing.T) {
 		t.Fatalf("firstPresent = %q", got)
 	}
 }
+
+func TestPrimaryCallLegSelection(t *testing.T) {
+	tests := []struct {
+		name  string
+		event map[string]string
+		want  bool
+	}{
+		{
+			name:  "inbound originating leg",
+			event: map[string]string{NameChannelDirection: "inbound"},
+			want:  true,
+		},
+		{
+			name: "forked device leg",
+			event: map[string]string{
+				NameChannelDirection:          "outbound",
+				NameChannelOriginatingLegUUID: "a-leg-uuid",
+			},
+			want: false,
+		},
+		{
+			name: "bridged outbound leg",
+			event: map[string]string{
+				NameChannelDirection:    "outbound",
+				NameChannelOtherLegUuid: "a-leg-uuid",
+			},
+			want: false,
+		},
+		{
+			name:  "standalone originate fallback",
+			event: map[string]string{NameChannelDirection: "outbound"},
+			want:  true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isPrimaryCallLeg(test.event); got != test.want {
+				t.Fatalf("isPrimaryCallLeg() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}

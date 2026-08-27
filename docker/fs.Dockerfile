@@ -127,6 +127,10 @@ RUN sed -i 's/<param name="sip-ip" value="\$\${local_ip_v4}"\/>/<param name="sip
 RUN sed -i 's/<param name="local-network-acl" value="localnet.auto"\/>/<param name="local-network-acl" value="loopback.auto"\/>/g' /etc/freeswitch/sip_profiles/internal.xml
 RUN sed -i 's/<param name="apply-nat-acl" value="nat.auto"\/>/<param name="apply-nat-acl" value="rfc1918.auto"\/>/g' /etc/freeswitch/sip_profiles/internal.xml
 RUN sed -i '/<param name="apply-nat-acl" value="rfc1918.auto"\/>/a\ <param name="apply-candidate-acl" value="rfc1918.auto"\/>' /etc/freeswitch/sip_profiles/internal.xml
+# A user can intentionally register the same extension from several browser
+# tabs/devices. Keep every contact so Sofia forks an inbound INVITE to all of
+# them; the first 200 OK wins and Sofia CANCELs the remaining dialogs.
+RUN sed -i 's|<!--<param name="multiple-registrations" value="contact"/>-->|<param name="multiple-registrations" value="contact"/>|' /etc/freeswitch/sip_profiles/internal.xml
 
 COPY ./docker/fs_conf/sofia.conf.xml /etc/freeswitch/autoload_configs/
 COPY ./docker/fs_conf/modules.conf.xml /etc/freeswitch/autoload_configs/
