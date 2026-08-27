@@ -142,12 +142,101 @@ func Migrate(switchName string) (bool, error) {
 		}
 		updated = true
 		fallthrough
+	case "0.3.4":
+		log.Println("Updating schema from 0.3.4")
+		err = migrateForV0v3v5(instanceId)
+		if err != nil {
+			return false, err
+		}
+		updated = true
+		fallthrough
 	case mainStruct.Version:
 		return updated, nil
 	}
 
 	err = UpdateVersion(instanceId)
 	return updated, err
+}
+
+// migrateForV0v3v5 applies an authoritative answer timeout to calls routed
+// from the default extension dialplan to registered agents. A carrier may
+// delay or omit a CANCEL for an abandoned inbound call; originate_timeout is
+// evaluated by FreeSWITCH itself and therefore ends every forked browser leg
+// after the configured wall-clock limit.
+func migrateForV0v3v5(instanceId int64) error {
+	if instanceId == 0 {
+		return errors.New("no id")
+	}
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// Only target bridge actions that dial a registered local user. Gateway,
+	// IVR and custom bridge actions retain their own timeout policy. Shift the
+	// bridge and following actions down one position, then insert the timeout
+	// immediately before each bridge. The NOT EXISTS clause keeps this safe if
+	// a deployment is retried after a partially completed prior run.
+	_, err = tx.ExecContext(ctx, `
+WITH target AS (
+  SELECT bridge.condition_id, MIN(bridge.position) AS bridge_position
+  FROM dialplan_actions bridge
+  JOIN dialplan_conditions condition ON condition.id = bridge.condition_id
+  JOIN dialplan_extensions extension ON extension.id = condition.extension_id
+  JOIN dialplan_contexts context ON context.id = extension.context_id
+  WHERE context.name = 'default'
+    AND bridge.enabled = TRUE
+    AND bridge.application = 'bridge'
+    AND bridge.data LIKE 'user/%'
+    AND NOT EXISTS (
+      SELECT 1
+      FROM dialplan_actions timeout
+      WHERE timeout.condition_id = bridge.condition_id
+        AND timeout.application = 'set'
+        AND timeout.data LIKE 'originate_timeout=%'
+    )
+  GROUP BY bridge.condition_id
+)
+UPDATE dialplan_actions action
+SET position = action.position + 1
+FROM target
+WHERE action.condition_id = target.condition_id
+  AND action.position >= target.bridge_position`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+INSERT INTO dialplan_actions (condition_id, position, application, data, inline, enabled)
+SELECT bridge.condition_id, bridge.position - 1, 'set', 'originate_timeout=45', FALSE, TRUE
+FROM dialplan_actions bridge
+JOIN dialplan_conditions condition ON condition.id = bridge.condition_id
+JOIN dialplan_extensions extension ON extension.id = condition.extension_id
+JOIN dialplan_contexts context ON context.id = extension.context_id
+WHERE context.name = 'default'
+  AND bridge.enabled = TRUE
+  AND bridge.application = 'bridge'
+  AND bridge.data LIKE 'user/%'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM dialplan_actions timeout
+    WHERE timeout.condition_id = bridge.condition_id
+      AND timeout.application = 'set'
+      AND timeout.data LIKE 'originate_timeout=%'
+  )`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err = UpdateVersionRequest(instanceId, tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 // migrateForV0v3v4 enables FreeSWITCH multi-registration on the internal
