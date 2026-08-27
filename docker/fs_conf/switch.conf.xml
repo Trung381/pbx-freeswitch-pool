@@ -22,6 +22,8 @@
         <param name="db-handle-timeout" value="10"/>
         <param name="max-sessions" value="1000"/>
         <param name="sessions-per-second" value="30"/>
+        <!-- Core gate for keeping more than one registration per extension. -->
+        <param name="multiple-registrations" value="true"/>
         <param name="loglevel" value="debug"/>
         <param name="mailer-app" value="sendmail"/>
         <param name="mailer-app-args" value="-t"/>

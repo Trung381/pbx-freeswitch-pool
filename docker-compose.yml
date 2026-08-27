@@ -115,6 +115,7 @@ services:
       # writes are owned by CustomPBX's UTF-8-safe ESL consumer, not FreeSWITCH's
       # raw mod_cdr_pg_csv writer.
       - ./docker/fs_conf/modules.conf.xml:/etc/freeswitch/autoload_configs/modules.conf.xml:ro
+      - ./docker/fs_conf/switch.conf.xml:/etc/freeswitch/autoload_configs/switch.conf.xml:ro
       - ./docker/fs_override/vars.xml:/etc/freeswitch/vars.xml
       - ./docker/fs_override/external.xml:/etc/freeswitch/sip_profiles/external.xml
     networks:
