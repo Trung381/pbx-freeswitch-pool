@@ -77,6 +77,16 @@ services:
     container_name: freeswitch-host
     hostname: freeswitch-host
     image: ghcr.io/custompbx/freeswitch:latest
+    # Keep this profile setting in the deploy manifest because production uses
+    # the published FreeSWITCH image rather than building docker/fs.Dockerfile.
+    # Sofia then forks one INVITE to every registered browser/device contact of
+    # an extension; the first device to answer wins and cancels its siblings.
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        sed -i 's|<!--<param name="multiple-registrations" value="contact"/>-->|<param name="multiple-registrations" value="contact"/>|' /etc/freeswitch/sip_profiles/internal.xml
+        exec freeswitch -nonat
     depends_on:
       custompbx:
         #condition: service_healthy
