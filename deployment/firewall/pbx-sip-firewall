@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Keep Docker-published SIP ports private. Configuration belongs in
+# /etc/pbx-firewall/sip-allowlist.env, never in this repository.
+set -euo pipefail
+
+readonly IPTABLES=/usr/sbin/iptables
+readonly DOCKER_CHAIN=DOCKER-USER
+readonly SIP_CHAIN=PBX-SIP-FW
+readonly INPUT_CHAIN=PBX-WG-FW
+
+WAN_INTERFACE=${WAN_INTERFACE:-ens192}
+WG_INTERFACE=${WG_INTERFACE:-wg0}
+WG_PORT=${WG_PORT:-51820}
+SIP_PORTS=${SIP_PORTS:-5060,5061,5080}
+RTP_PORT_RANGE=${RTP_PORT_RANGE:-16384:16399}
+TRUNK_SIP_CIDRS=${TRUNK_SIP_CIDRS:-}
+TRUNK_RTP_CIDRS=${TRUNK_RTP_CIDRS:-}
+
+iptables() {
+  "$IPTABLES" -w 10 "$@"
+}
+
+remove_rule() {
+  local chain=$1
+  shift
+  while iptables -C "$chain" "$@" 2>/dev/null; do
+    iptables -D "$chain" "$@"
+  done
+}
+
+remove_jump() {
+  local chain=$1 target=$2
+  while iptables -C "$chain" -j "$target" 2>/dev/null; do
+    iptables -D "$chain" -j "$target"
+  done
+}
+
+create_or_flush_chain() {
+  local chain=$1
+  iptables -N "$chain" 2>/dev/null || iptables -F "$chain"
+}
+
+remove_legacy_rules() {
+  # The original unit did not tag its rules. Remove only its known shape so
+  # upgrades do not leave an untracked rule ahead of this managed policy.
+  local protocol
+  for protocol in tcp udp; do
+    remove_rule "$DOCKER_CHAIN" -i "$WAN_INTERFACE" -p "$protocol" -m multiport --dports "$SIP_PORTS" -j DROP
+    remove_rule "$DOCKER_CHAIN" -i "$WAN_INTERFACE" -p "$protocol" -s 125.212.225.105/32 -m multiport --dports "$SIP_PORTS" -j ACCEPT
+  done
+}
+
+apply() {
+  remove_legacy_rules
+  remove_jump "$DOCKER_CHAIN" "$SIP_CHAIN"
+  remove_jump INPUT "$INPUT_CHAIN"
+  create_or_flush_chain "$SIP_CHAIN"
+  create_or_flush_chain "$INPUT_CHAIN"
+
+  # A dedicated chain prevents this service from modifying Docker's or an
+  # operator's rules. Narrow allows must precede public-interface drops.
+  iptables -A "$SIP_CHAIN" -i "$WG_INTERFACE" -p udp --dport "$RTP_PORT_RANGE" -j ACCEPT
+  iptables -A "$SIP_CHAIN" -i "$WG_INTERFACE" -p tcp -m multiport --dports "$SIP_PORTS" -j ACCEPT
+  iptables -A "$SIP_CHAIN" -i "$WG_INTERFACE" -p udp -m multiport --dports "$SIP_PORTS" -j ACCEPT
+
+  local cidr
+  for cidr in $TRUNK_RTP_CIDRS; do
+    iptables -A "$SIP_CHAIN" -i "$WAN_INTERFACE" -s "$cidr" -p udp --dport "$RTP_PORT_RANGE" -j ACCEPT
+  done
+  for cidr in $TRUNK_SIP_CIDRS; do
+    iptables -A "$SIP_CHAIN" -i "$WAN_INTERFACE" -s "$cidr" -p tcp -m multiport --dports "$SIP_PORTS" -j ACCEPT
+    iptables -A "$SIP_CHAIN" -i "$WAN_INTERFACE" -s "$cidr" -p udp -m multiport --dports "$SIP_PORTS" -j ACCEPT
+  done
+
+  iptables -A "$SIP_CHAIN" -i "$WAN_INTERFACE" -p udp --dport "$RTP_PORT_RANGE" -j DROP
+  iptables -A "$SIP_CHAIN" -i "$WAN_INTERFACE" -p tcp -m multiport --dports "$SIP_PORTS" -j DROP
+  iptables -A "$SIP_CHAIN" -i "$WAN_INTERFACE" -p udp -m multiport --dports "$SIP_PORTS" -j DROP
+  iptables -A "$SIP_CHAIN" -j RETURN
+  iptables -I "$DOCKER_CHAIN" 1 -j "$SIP_CHAIN"
+
+  # WireGuard terminates on the host INPUT chain rather than in Docker.
+  iptables -A "$INPUT_CHAIN" -i "$WAN_INTERFACE" -p udp --dport "$WG_PORT" -j ACCEPT
+  iptables -A "$INPUT_CHAIN" -j RETURN
+  iptables -I INPUT 1 -j "$INPUT_CHAIN"
+}
+
+clear() {
+  remove_jump "$DOCKER_CHAIN" "$SIP_CHAIN"
+  remove_jump INPUT "$INPUT_CHAIN"
+  iptables -F "$SIP_CHAIN" 2>/dev/null || true
+  iptables -X "$SIP_CHAIN" 2>/dev/null || true
+  iptables -F "$INPUT_CHAIN" 2>/dev/null || true
+  iptables -X "$INPUT_CHAIN" 2>/dev/null || true
+}
+
+case "${1:-}" in
+  apply) apply ;;
+  clear) clear ;;
+  *) echo "usage: $0 {apply|clear}" >&2; exit 64 ;;
+esac

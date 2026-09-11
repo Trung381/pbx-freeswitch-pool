@@ -139,6 +139,15 @@ Override `PBX_TURN_TLS_CERT_FILE`, `PBX_TURN_TLS_KEY_FILE`, or `PBX_TURN_CERTS_H
 
 The example credentials are intended only for a local evaluation environment. Replace them before any shared or Internet-accessible deployment.
 
+## Production SIP access
+
+The production firewall and WireGuard operational assets are versioned under
+[`deployment/`](deployment/).  They keep the existing carrier SIP trunk while
+requiring employee softphones to use WireGuard instead of exposing SIP
+registration to the Internet. See [the WireGuard runbook](deployment/wireguard/README.md)
+before deploying; private keys and the installed allowlist are deliberately not
+kept in Git.
+
 The quick-start stack creates the demo CDR table and connects `mod_cdr_pg_csv` to PostgreSQL. This bootstrap replaces only FreeSWITCH's unchanged `host=localhost dbname=cdr` sample value; operator-configured CDR database settings are preserved.
 
 After the containers start, open `https://127.0.0.1:8080/cweb` (or the equivalent Docker host address) and accept the development self-signed certificate.
@@ -299,6 +308,5 @@ If you have any questions or feedback, don't hesitate to get in touch through th
 
 
 <img width="2558" height="1401" alt="Opera Instantané_2026-07-18_192427_localhost" src="https://github.com/user-attachments/assets/2b8e2611-9359-4525-84cf-35aadecde036" />
-
 
 

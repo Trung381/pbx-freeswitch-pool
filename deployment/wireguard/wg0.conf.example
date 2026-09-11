@@ -1,0 +1,11 @@
+# Install the real version as /etc/wireguard/wg0.conf with mode 0600.
+# Generate the server private key on the host; it must never enter Git.
+[Interface]
+Address = 10.77.0.1/24
+ListenPort = 51820
+PrivateKey = REPLACE_WITH_SERVER_PRIVATE_KEY
+
+# Add exactly one peer block for each device. Peer addresses must be unique.
+#[Peer]
+#PublicKey = REPLACE_WITH_CLIENT_PUBLIC_KEY
+#AllowedIPs = 10.77.0.10/32

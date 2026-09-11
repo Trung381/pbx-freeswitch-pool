@@ -1,0 +1,16 @@
+[Unit]
+Description=Restrict Docker-published SIP and RTP to PBX trunk and WireGuard
+Requires=docker.service
+After=docker.service wg-quick@wg0.service
+Wants=wg-quick@wg0.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/pbx-firewall/sip-allowlist.env
+ExecStart=/usr/local/sbin/pbx-sip-firewall apply
+ExecStop=/usr/local/sbin/pbx-sip-firewall clear
+
+[Install]
+WantedBy=multi-user.target
