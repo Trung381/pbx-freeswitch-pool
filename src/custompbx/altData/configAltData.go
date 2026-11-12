@@ -1223,7 +1223,7 @@ func XMLSofia(name string, arg string) *mainStruct.Configuration {
 				&altStruct.ConfigSofiaProfileGatewayVariable{Parent: &altStruct.ConfigSofiaProfileGateway{Id: gateway.Id}, Enabled: true},
 				map[string]bool{"Parent": true, "Enabled": true},
 			)
-			gatewayLists = append(listLists, struct {
+			gatewayLists = append(gatewayLists, struct {
 				*altStruct.ConfigSofiaProfileGateway
 				Params interface{} `xml:"param"`
 				Vars   interface{} `xml:"variable"`
