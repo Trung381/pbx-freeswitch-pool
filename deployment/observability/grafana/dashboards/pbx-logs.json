@@ -46,10 +46,42 @@
     "includeAll": true,
     "allValue": ".*",
     "multi": true,
-    "query": "ERROR,WARNING,ERR,CRIT,ALERT,NOTICE,INFO",
+    "query": "ERROR,WARNING,ERR,CRIT,ALERT,NOTICE,INFO,DEBUG",
     "current": {
      "text": "All",
      "value": "$__all"
+    }
+   },
+   {
+    "name": "component",
+    "label": "Component (custompbx)",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": {
+     "label": "component",
+     "type": 1,
+     "refId": "comp"
+    },
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2
+   },
+   {
+    "name": "call_uuid",
+    "label": "Call UUID (trace cuoc goi)",
+    "type": "textbox",
+    "query": ".+",
+    "current": {
+     "text": ".+",
+     "value": ".+"
     }
    },
    {
@@ -176,6 +208,59 @@
   },
   {
    "id": 3,
+   "type": "timeseries",
+   "title": "Log custompbx theo component / level",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (component, level) (count_over_time({container=\"custompbx-host\", component=~\"$component\"}[$__interval]))",
+     "queryType": "range",
+     "legendFormat": "{{component}} {{level}}"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 6,
+    "w": 24,
+    "h": 6
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 60,
+      "showPoints": "never",
+      "spanNulls": true,
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 4,
    "type": "logs",
    "title": "Log",
    "datasource": {
@@ -189,13 +274,13 @@
       "type": "loki",
       "uid": "loki"
      },
-     "expr": "{container=~\"$container\", level=~\"$level\"} |~ \"(?i)$search\"",
+     "expr": "{container=~\"$container\", level=~\"$level\", component=~\"$component\"} |~ \"(?i)$search\"",
      "queryType": "range"
     }
    ],
    "gridPos": {
     "x": 0,
-    "y": 6,
+    "y": 12,
     "w": 24,
     "h": 14
    },
@@ -212,7 +297,43 @@
    }
   },
   {
-   "id": 4,
+   "id": 5,
+   "type": "logs",
+   "title": "Trace theo call_uuid (custompbx + FreeSWITCH)",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{source=~\"stdout|file\"} | call_uuid=~\"$call_uuid\"",
+     "queryType": "range"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 26,
+    "w": 24,
+    "h": 12
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "enableLogDetails": true,
+    "sortOrder": "Ascending"
+   }
+  },
+  {
+   "id": 6,
    "type": "logs",
    "title": "FreeSWITCH (file) - chi WARNING/ERR/CRIT",
    "datasource": {
@@ -232,7 +353,7 @@
    ],
    "gridPos": {
     "x": 0,
-    "y": 20,
+    "y": 38,
     "w": 24,
     "h": 10
    },
@@ -247,7 +368,7 @@
    }
   },
   {
-   "id": 5,
+   "id": 7,
    "type": "logs",
    "title": "custompbx - loi",
    "datasource": {
@@ -267,7 +388,7 @@
    ],
    "gridPos": {
     "x": 0,
-    "y": 30,
+    "y": 48,
     "w": 12,
     "h": 10
    },
@@ -282,7 +403,7 @@
    }
   },
   {
-   "id": 6,
+   "id": 8,
    "type": "logs",
    "title": "postgres - loi / canh bao",
    "datasource": {
@@ -302,7 +423,7 @@
    ],
    "gridPos": {
     "x": 12,
-    "y": 30,
+    "y": 48,
     "w": 12,
     "h": 10
    },

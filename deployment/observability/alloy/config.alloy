@@ -80,9 +80,40 @@ loki.process "freeswitch" {
 
 // ---------- Xu ly chung ----------
 loki.process "common" {
-  // Level cho log stdout cua custompbx/postgres/minio (khong co format co dinh).
+  // custompbx ghi log JSON (log/slog): {"time","level","msg","service","component","call_uuid",...}
+  // Dong JSON -> level + component la label (cardinality thap); call_uuid la structured metadata.
+  // Dong KHONG phai JSON (panic Go, thu vien in thang ra stderr...) roi xuong heuristic ben duoi.
   stage.match {
-    selector = "{source=\"stdout\"} |~ \"(?i)(panic|fatal|\\\\[error\\\\]|\\\\berror\\\\b)\""
+    selector = "{container=\"custompbx-host\"} |~ \"^\\\\{.*\\\"level\\\":\""
+    stage.json {
+      expressions = {
+        slog_time = "time",
+        level     = "level",
+        component = "component",
+        call_uuid = "call_uuid",
+      }
+    }
+    stage.timestamp {
+      source           = "slog_time"
+      format           = "RFC3339Nano"
+      fallback_formats = ["RFC3339"]
+    }
+    // debug|info|warn|error -> DEBUG|INFO|WARNING|ERROR (dong nhat voi level cua FreeSWITCH).
+    stage.template {
+      source   = "level"
+      template = "{{ if eq .Value \"warn\" }}WARNING{{ else }}{{ ToUpper .Value }}{{ end }}"
+    }
+    stage.labels {
+      values = {level = "", component = ""}
+    }
+    // call_uuid co cardinality cao: structured metadata, KHONG lam label.
+    stage.structured_metadata {
+      values = {call_uuid = ""}
+    }
+  }
+  // Fallback: log stdout khong co format co dinh (chi ap dung khi chua co level tu JSON).
+  stage.match {
+    selector = "{source=\"stdout\",level=\"\"} |~ \"(?i)(panic|fatal|\\\\[error\\\\]|\\\\berror\\\\b)\""
     stage.static_labels {
       values = {level = "ERROR"}
     }

@@ -49,6 +49,30 @@ alert hien trong UI (Alerting > Alert rules), gui Telegram bao loi trong log. Di
 `pbx_hep_packets_total{result}` + metrics Go/process. Chi co sau khi build/deploy lai custompbx. Loi call webhook duoc canh bao qua log
 (`dispatcher.go` chua co counter rieng).
 
+## Log custompbx (JSON, log/slog)
+custompbx ghi log JSON ra stdout (package `src/custompbx/logx`), moi dong co: `time`, `level` (debug|info|warn|error), `msg`,
+`service=custompbx`, `component` (fsesl, db, web, websocket, cdr, hep, xmlcurl, cfg, ...), `call_uuid` (khi co) va `err`.
+Thu vien ben thu ba dung `log` chuan van ra JSON voi `component=stdlog`. Gia tri nhay cam (password/token/secret/URL co mat khau) bi che `[REDACTED]`.
+
+- Muc log: bien moi truong `LOG_LEVEL` cua container custompbx (`debug|info|warn|error`, mac dinh `info`). Event nhieu/chi tiet o muc `debug`.
+- Alloy: dong JSON -> label `level` (DEBUG/INFO/WARNING/ERROR, dong nhat voi FreeSWITCH) + `component`; `call_uuid` la **structured metadata**
+  (khong phai label, tranh cardinality). Dong khong phai JSON (panic Go...) van duoc nhan level bang heuristic cu.
+- Dashboard "PBX - Log explorer": bien `Component`, `Call UUID`, panel "Trace theo call_uuid" (gop custompbx + FreeSWITCH).
+
+LogQL mau:
+```logql
+# Moi log cua 1 cuoc goi (custompbx + FreeSWITCH, structured metadata call_uuid)
+{source=~"stdout|file"} | call_uuid="3f1c0c7e-aaaa-bbbb-cccc-1234567890ab"
+# Loi custompbx theo component, hien thi gon
+{container="custompbx-host", level="ERROR"} | json | line_format "{{.component}} {{.msg}} {{.err}}"
+# So loi theo component trong 10 phut
+sum by (component) (count_over_time({container="custompbx-host", level="ERROR"}[10m]))
+# Loc theo truong bat ky trong JSON
+{container="custompbx-host", component="fsesl"} | json | delay_seconds > 60
+```
+Luu y: `dispatcher.go` (call webhook) van dung `log` chuan nen chuoi "Call webhook delivery failed ..." nam trong truong `msg`; rule
+`pbx-webhook-fail` dem theo chuoi nay nen van hoat dong.
+
 ## Van hanh
 - Dung luong: `docker system df`; Loki/Prometheus tu xoa theo retention.
 - Doi thoi gian giu log: sua `retention_period` trong `loki/loki.yml` roi `docker compose up -d loki`.

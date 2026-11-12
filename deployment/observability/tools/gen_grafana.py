@@ -170,24 +170,34 @@ def logs():
         {"name": "container", "label": "Container", "type": "query", "datasource": LOKI, "query": {"label": "container", "type": 1, "refId": "c"},
          "includeAll": True, "allValue": ".+", "multi": True, "current": {"text": "All", "value": "$__all"}, "refresh": 2},
         {"name": "level", "label": "Level", "type": "custom", "includeAll": True, "allValue": ".*", "multi": True,
-         "query": "ERROR,WARNING,ERR,CRIT,ALERT,NOTICE,INFO", "current": {"text": "All", "value": "$__all"}},
+         "query": "ERROR,WARNING,ERR,CRIT,ALERT,NOTICE,INFO,DEBUG", "current": {"text": "All", "value": "$__all"}},
+        # custompbx ghi log JSON (slog): component la label (fsesl, db, web, ...). FreeSWITCH/postgres khong co.
+        {"name": "component", "label": "Component (custompbx)", "type": "query", "datasource": LOKI, "query": {"label": "component", "type": 1, "refId": "comp"},
+         "includeAll": True, "allValue": ".*", "multi": True, "current": {"text": "All", "value": "$__all"}, "refresh": 2},
+        # call_uuid la structured metadata (khong phai label): loc bang `| call_uuid=~"..."`. Mac dinh .+ = moi dong co UUID.
+        {"name": "call_uuid", "label": "Call UUID (trace cuoc goi)", "type": "textbox", "query": ".+", "current": {"text": ".+", "value": ".+"}},
         {"name": "search", "label": "Tim kiem (regex)", "type": "textbox", "query": "", "current": {"text": "", "value": ""}},
     ]
-    sel = '{container=~"$container", level=~"$level"} |~ "(?i)$search"'
+    sel = '{container=~"$container", level=~"$level", component=~"$component"} |~ "(?i)$search"'
     P = []
     P.append(ts("Luong log theo container", [target(LOKI, 'sum by (container) (count_over_time({container=~"$container"}[$__interval]))', "{{container}}")],
                 0, 0, w=12, h=6, custom={"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}))
     P.append(ts("Loi / canh bao theo container", [target(LOKI, 'sum by (container, level) (count_over_time({container=~"$container", level=~"ERROR|ERR|CRIT|ALERT|WARNING"}[$__interval]))', "{{container}} {{level}}")],
                 12, 0, w=12, h=6, custom={"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}))
-    lp = panel("logs", "Log", [target(LOKI, sel)], 0, 6, 24, 14,
+    P.append(ts("Log custompbx theo component / level", [target(LOKI, 'sum by (component, level) (count_over_time({container="custompbx-host", component=~"$component"}[$__interval]))', "{{component}} {{level}}")],
+                0, 6, w=24, h=6, custom={"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}))
+    lp = panel("logs", "Log", [target(LOKI, sel)], 0, 12, 24, 14,
                options={"showTime": True, "wrapLogMessage": True, "enableLogDetails": True, "sortOrder": "Descending", "dedupStrategy": "none"})
     P.append(lp)
+    # Trace 1 cuoc goi xuyen custompbx (slog call_uuid) + FreeSWITCH (UUID prefix) bang structured metadata.
+    P.append(panel("logs", "Trace theo call_uuid (custompbx + FreeSWITCH)", [target(LOKI, '{source=~"stdout|file"} | call_uuid=~"$call_uuid"')],
+                   0, 26, 24, 12, options={"showTime": True, "wrapLogMessage": True, "enableLogDetails": True, "sortOrder": "Ascending"}))
     P.append(panel("logs", "FreeSWITCH (file) - chi WARNING/ERR/CRIT", [target(LOKI, '{job="freeswitch", level=~"WARNING|ERR|CRIT|ALERT"}')],
-                   0, 20, 24, 10, options={"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending"}))
+                   0, 38, 24, 10, options={"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending"}))
     P.append(panel("logs", "custompbx - loi", [target(LOKI, '{container="custompbx-host", level="ERROR"}')],
-                   0, 30, 12, 10, options={"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending"}))
+                   0, 48, 12, 10, options={"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending"}))
     P.append(panel("logs", "postgres - loi / canh bao", [target(LOKI, '{container="postgres-host"} |~ "(?i)error|fatal|warning|panic"')],
-                   12, 30, 12, 10, options={"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending"}))
+                   12, 48, 12, 10, options={"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending"}))
     return dashboard("pbx-logs", "PBX - Log explorer", P, ["logs"], templating=tpl, time_from="now-3h")
 
 
@@ -316,7 +326,10 @@ def alerts():
     logs = [
         rule("pbx-webhook-fail", "Call webhook gui loi", 'sum(count_over_time({container="custompbx-host"} |= "Call webhook delivery failed" [10m]))',
              "gt", 5, "0s", "warning", "{{ $values.B }} lan gui call webhook that bai trong 10 phut.", ds=LOKI, lookback=600,
-             desc="Dem tu log (dispatcher.go chua co metric rieng)."),
+             desc="Dem tu log (dispatcher.go chua co metric rieng; van dung std log nen chuoi nam trong truong msg cua dong JSON)."),
+        rule("pbx-app-errors", "custompbx nhieu log ERROR", 'sum(count_over_time({container="custompbx-host", level="ERROR"}[10m]))',
+             "gt", 20, "0s", "warning", "{{ $values.B }} dong log level=error cua custompbx trong 10 phut.", ds=LOKI, lookback=600,
+             desc="Log JSON (slog): xem theo component/call_uuid trong dashboard Log explorer."),
         rule("pbx-fs-errors", "FreeSWITCH nhieu log ERR/CRIT", 'sum(count_over_time({job="freeswitch", level=~"ERR|CRIT|ALERT"}[10m]))',
              "gt", 30, "0s", "warning", "{{ $values.B }} dong log ERR/CRIT/ALERT cua FreeSWITCH trong 10 phut.", ds=LOKI, lookback=600),
     ]
