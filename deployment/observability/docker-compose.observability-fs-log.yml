@@ -1,0 +1,18 @@
+# Override cho compose CHINH (khong sua docker-compose.yml cua repo).
+# Thay volume an danh `/var/log/freeswitch/log` bang named volume de Alloy doc duoc log.
+# FreeSWITCH ghi file log o /var/log/freeswitch/freeswitch.log (ngoai thu muc /log), nen mount ca
+# /var/log/freeswitch; /var/log/freeswitch/log duoc khai bao lai de thay volume an danh.
+#
+#   docker compose -f docker-compose.yml -f deployment/observability/docker-compose.observability-fs-log.yml \
+#     up -d --no-deps freeswitch
+volumes:
+  freeswitch-logs:
+  freeswitch-logs-sub:
+
+services:
+  freeswitch:
+    volumes:
+      - freeswitch-logs:/var/log/freeswitch
+      - freeswitch-logs-sub:/var/log/freeswitch/log
+      # Gioi han dung luong log: xoay 20MB, giu 3 file, bo muc debug. Bat uuid dau dong.
+      - ./deployment/observability/fs_conf/logfile.conf.xml:/etc/freeswitch/autoload_configs/logfile.conf.xml:ro

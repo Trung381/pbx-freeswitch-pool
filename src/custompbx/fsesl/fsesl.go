@@ -12,6 +12,7 @@ import (
 	"custompbx/logsafe"
 	"custompbx/mainStruct"
 	"custompbx/pbxcache"
+	"custompbx/promexp"
 	"custompbx/webcache"
 	"custompbx/xmlStruct"
 	"encoding/json"
@@ -482,6 +483,7 @@ func ESLConnectKeeper(eventChannel chan interface{}, logsChannel chan mainStruct
 				continue
 			}
 			log.Println("Reconnecting to ESL...")
+			promexp.ObserveESLReconnect()
 			daemonCache.State.ESLConnection = false
 			Connect(eventChannel, logsChannel)
 			if esl == nil || !esl.Connected() {
@@ -770,6 +772,9 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 	eventMap := fsock.FSEventStrToMap(event, filterHeaders)
 	logDelayedChannelEvent(eventMap)
 	cdrwriter.Persist(eventMap)
+	if isPrimaryCallLeg(eventMap) {
+		promexp.ObserveCallEnd(eventMap[NameChannelHangupCause], eventMap[NameChannelDirection])
+	}
 
 	cCache := pbxcache.GetChannelsCache()
 	channel := cCache.RemoveByUUID(eventMap[NameChannelUuid], eventMap[NameChannelOtherLegUuid])
@@ -1187,6 +1192,14 @@ func sofiaGatewayHandler(event string, id int, eventChannel chan interface{}) {
 	var filterHeaders []string
 	eventMap := fsock.FSEventStrToMap(event, filterHeaders)
 	gatewayName := eventMap[HeaderGateway]
+	switch eventMap[EventSubclass] {
+	case NameSubGatewayAdd:
+		promexp.SetGatewayState(gatewayName, "NOREG")
+	case NameSubGatewayDelete:
+		promexp.SetGatewayState(gatewayName, "")
+	case NameSubGatewayState:
+		promexp.SetGatewayState(gatewayName, eventMap[HeaderState])
+	}
 	gateway := altData.GetSofiaProfileGateway(gatewayName)
 	if gateway == nil {
 		log.Println("no gateway")

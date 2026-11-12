@@ -2,6 +2,7 @@ package hepHandler
 
 import (
 	"custompbx/cfg"
+	"custompbx/promexp"
 	"fmt"
 	"github.com/custompbx/hepparser"
 	"log"
@@ -94,8 +95,10 @@ func ParseAndSaveHEP(packet []byte, HEPChannel chan *hepparser.HEP) {
 
 	hepPacket, err := hepparser.DecodeHEP(packet)
 	if err != nil {
+		promexp.ObserveHEP("decode_error")
 		log.Println(err)
 		return
 	}
+	promexp.ObserveHEP("received")
 	HEPChannel <- hepPacket
 }

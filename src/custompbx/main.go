@@ -21,6 +21,7 @@ import (
 	"custompbx/metrics"
 	"custompbx/nocache"
 	"custompbx/pbxcache"
+	"custompbx/promexp"
 	"custompbx/recordingapi"
 	"custompbx/recordingstore"
 	"custompbx/web"
@@ -131,6 +132,14 @@ func main() {
 		log.Printf("no service connections DB: %t ESL: %t\n", daemonCache.State.DatabaseConnection, daemonCache.State.ESLConnection)
 	}
 
+	promexp.SetCallbacks(
+		func() bool { return daemonCache.State != nil && daemonCache.State.ESLConnection },
+		func() bool { return daemonCache.State != nil && daemonCache.State.DatabaseConnection },
+		func() (int, int) { return pbxcache.GetChannelsCache().Counters() },
+	)
+	// Private listener (not published by docker-compose); empty value disables it.
+	go promexp.Serve(metricsListenAddr())
+
 	log.Println("Web Handlers")
 	rCurl := chi.NewRouter()
 	configureMiddleware(rCurl)
@@ -148,6 +157,13 @@ func main() {
 
 	go turnServer()
 	startServers(rWeb, rCurl)
+}
+
+func metricsListenAddr() string {
+	if v, ok := os.LookupEnv("CUSTOMPBX_METRICS_ADDR"); ok {
+		return strings.TrimSpace(v)
+	}
+	return ":9102"
 }
 
 func startServers(r chi.Router, cr chi.Router) {
