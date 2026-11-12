@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"github.com/custompbx/hepparser"
 	"github.com/gorilla/websocket"
-	"log"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -83,7 +82,7 @@ func TimeEvents() {
 			case *hepparser.HEP:
 				// b.Broadcast(webStruct.UserResponse{MessageType: webStruct.SubscribeHepPackages, HEPs: event.(*hepparser.HEP)})
 			default:
-				log.Printf("Unknown event type: %T - %+v\n", event, event)
+				logger.Warn("unknown event type", "type", fmt.Sprintf("%T", event))
 			}
 
 		case <-twoSecondsTick:
@@ -95,14 +94,14 @@ func TimeEvents() {
 func StartWS(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Printf("ERROR on StartWS: %+v", err.Error())
+		logger.Error("StartWS failed", "err", err)
 		return
 	}
-	fmt.Println("NEW WS CONNECTION")
+	logger.Debug("new websocket connection")
 	wsContext := webStruct.CreateWsContext(ws)
 	b.Register(wsContext)
 
-	fmt.Println("STARTING GOROUTINES")
+	logger.Debug("starting websocket goroutines")
 	go wsContext.SendWaiter()
 	go wsContext.ReadWaiter(messageHandler)
 }
@@ -119,7 +118,7 @@ func HubMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(b.Metrics()); err != nil {
-		log.Printf("component=websocket operation=write_metrics error=%q", err)
+		logger.Error("websocket write metrics failed", "err", err)
 	}
 }
 
@@ -133,8 +132,8 @@ func messageHandler(msg *webStruct.Message, wsContext *webStruct.WsContext) {
 	defer func() {
 		if r := recover(); r != nil {
 			wsContext.RecordHandlerFailure()
-			log.Printf("component=websocket connection_id=%d user_id=%d operation=message_handler error=%v", wsContext.ID, wsContext.UserID(), r)
-			log.Printf("component=websocket connection_id=%d user_id=%d operation=message_handler stacktrace=%q", wsContext.ID, wsContext.UserID(), string(debug.Stack()))
+			logger.Error("websocket message handler panic", "connection_id", wsContext.ID, "user_id", wsContext.UserID(), "panic", fmt.Sprint(r))
+			logger.Error("websocket message handler stacktrace", "connection_id", wsContext.ID, "user_id", wsContext.UserID(), "stacktrace", string(debug.Stack()))
 		}
 	}()
 	if err := msg.Validate(); err != nil {
@@ -163,18 +162,18 @@ func messageHandler(msg *webStruct.Message, wsContext *webStruct.WsContext) {
 		sendWSResponse(wsContext, &resp)
 		return
 	}
-	log.Println("EVENT: ", msg.Event)
+	logger.Debug("websocket event", "event", msg.Event)
 
 	// find user by token
 	user, response := messageUserLookup(msg.Data)
 	if user == nil {
-		log.Println("EVENT: ", msg.Event, "NO USER")
+		logger.Debug("websocket event dropped: no user", "event", msg.Event)
 		sendWSResponse(wsContext, &response)
 		return
 	}
 	subsResp := subscribeUser(msg.Data)
 	if subsResp != nil {
-		log.Println("EVENT: ", msg.Event, "NO SUBS")
+		logger.Debug("websocket event dropped: no subscribers", "event", msg.Event)
 		sendWSResponse(wsContext, subsResp)
 		return
 	}

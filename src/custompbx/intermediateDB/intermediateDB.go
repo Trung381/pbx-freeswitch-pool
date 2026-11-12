@@ -4,7 +4,6 @@ import (
 	"custompbx/db"
 	"errors"
 	"github.com/custompbx/customorm"
-	"log"
 	"strings"
 )
 
@@ -161,12 +160,12 @@ func UpdateFunc(item interface{}, fields []string) (interface{}, error) {
 		err = UpdateByIdByValuesMap(item, theMap)
 	}
 	if err != nil {
-		log.Println("Update error:", err)
+		logger.Error("update failed", "err", err)
 		return nil, errors.New("can't update")
 	}
 	result, err := GetByIdFromDB(item)
 	if err != nil {
-		log.Println("Get updated item error:", err)
+		logger.Error("get updated item failed", "err", err)
 		return nil, errors.New("can't get updated item")
 	}
 	return result, nil

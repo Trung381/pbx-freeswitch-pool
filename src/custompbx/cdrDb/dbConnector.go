@@ -11,7 +11,6 @@ import (
 	"custompbx/webcache"
 	"errors"
 	"github.com/jackc/pgx/v5"
-	"log"
 	"strings"
 )
 
@@ -67,7 +66,7 @@ func StartDB() {
 	if err != nil || conn == nil {
 		daemonCache.State.CdrDatabaseConnection = false
 		daemonCache.State.CdrDataBaseError = err
-		log.Println(err)
+		logger.Error("StartDB failed", "err", err)
 
 		return
 	}

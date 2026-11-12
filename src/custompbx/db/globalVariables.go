@@ -3,7 +3,6 @@ package db
 import (
 	"custompbx/mainStruct"
 	"database/sql"
-	"log"
 )
 
 func InitGlobalVariablesDB() {
@@ -48,7 +47,7 @@ func SetGlobalVariable(name string, value string, varType string, instanceId int
 func GetGlobalVariables(globalVariables *mainStruct.GlobalVariables, instanceId int64) {
 	items, err := db.Query(`SELECT id, variable_name, variable_value, variable_type, enabled, dynamic, position FROM global_variables WHERE instance_id = $1;`, instanceId)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetGlobalVariables failed", "err", err)
 		return
 	}
 	defer items.Close()
@@ -56,7 +55,7 @@ func GetGlobalVariables(globalVariables *mainStruct.GlobalVariables, instanceId 
 		var item mainStruct.GlobalVariable
 		err := items.Scan(&item.Id, &item.Name, &item.Value, &item.Type, &item.Enabled, &item.Dynamic, &item.Position)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetGlobalVariables failed", "err", err)
 			return
 		}
 		globalVariables.Set(&item)

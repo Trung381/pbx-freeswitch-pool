@@ -6,7 +6,6 @@ import (
 	"custompbx/mainStruct"
 	"database/sql"
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 )
@@ -36,7 +35,7 @@ func StartDB() {
 		if daemonCache.State.DatabaseConnection {
 			return
 		}
-		log.Println("Failed to connect to the database. Retrying in 5 seconds...")
+		logger.Warn("failed to connect to the database, retrying in 5 seconds")
 		time.Sleep(5 * time.Second)
 		DBConnect()
 	}
@@ -72,7 +71,7 @@ func createInstancesTable(db *sql.DB) {
 func GetFsInstances(fsInstances *mainStruct.FsInstances) {
 	instances, err := db.Query(`SELECT id, instance_name, host, port, auth, token, description, enabled FROM fs_instances;`)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetFsInstances failed", "err", err)
 		return
 	}
 	defer instances.Close()
@@ -80,7 +79,7 @@ func GetFsInstances(fsInstances *mainStruct.FsInstances) {
 		var instance mainStruct.FsInstance
 		err := instances.Scan(&instance.Id, &instance.Name, &instance.Host, &instance.Port, &instance.Auth, &instance.Token, &instance.Description, &instance.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetFsInstances failed", "err", err)
 			return
 		}
 		fsInstances.Set(&instance)

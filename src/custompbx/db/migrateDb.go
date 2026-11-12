@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 )
 
 func InitCustomDB() {
@@ -63,12 +62,12 @@ func GetVersion(instanceId int64) string {
 	var instanceIdExists string
 	tx, err := db.Begin()
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetVersion failed", "err", err)
 		return ""
 	}
 	err = tx.QueryRow("SELECT column_name FROM information_schema.columns WHERE table_name='web_settings' and column_name='instance_id'").Scan(&instanceIdExists)
 	if err != nil && err != sql.ErrNoRows {
-		log.Println(err)
+		logger.Error("GetVersion failed", "err", err)
 		tx.Rollback()
 		return ""
 	}
@@ -78,7 +77,7 @@ func GetVersion(instanceId int64) string {
 		err = tx.QueryRow("SELECT param_value FROM web_settings WHERE param_name = $1 AND instance_id = $2", mainStruct.CustomPBXVersion, instanceId).Scan(&version)
 	}
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetVersion failed", "err", err)
 		tx.Rollback()
 		return ""
 	}
@@ -103,7 +102,7 @@ func Migrate(switchName string) (bool, error) {
 	case "0.0.1":
 		fallthrough
 	case "0.0.101":
-		log.Println("Updating schema from 0.0.101")
+		logger.Info("updating schema", "from_version", "0.0.101")
 		err = migrateForV0v0v102(instanceId)
 		if err != nil {
 			return false, err
@@ -111,7 +110,7 @@ func Migrate(switchName string) (bool, error) {
 		updated = true
 		fallthrough
 	case "0.0.105":
-		log.Println("Updating schema from 0.0.105")
+		logger.Info("updating schema", "from_version", "0.0.105")
 		err = migrateForV0v0v106(instanceId)
 		if err != nil {
 			return false, err
@@ -119,7 +118,7 @@ func Migrate(switchName string) (bool, error) {
 		updated = true
 		fallthrough
 	case "0.3.1":
-		log.Println("Updating schema from 0.3.1")
+		logger.Info("updating schema", "from_version", "0.3.1")
 		err = migrateForV0v3v2(instanceId)
 		if err != nil {
 			return false, err
@@ -127,7 +126,7 @@ func Migrate(switchName string) (bool, error) {
 		updated = true
 		fallthrough
 	case "0.3.2":
-		log.Println("Updating schema from 0.3.2")
+		logger.Info("updating schema", "from_version", "0.3.2")
 		err = migrateForV0v3v3(instanceId)
 		if err != nil {
 			return false, err
@@ -135,7 +134,7 @@ func Migrate(switchName string) (bool, error) {
 		updated = true
 		fallthrough
 	case "0.3.3":
-		log.Println("Updating schema from 0.3.3")
+		logger.Info("updating schema", "from_version", "0.3.3")
 		err = migrateForV0v3v4(instanceId)
 		if err != nil {
 			return false, err
@@ -143,7 +142,7 @@ func Migrate(switchName string) (bool, error) {
 		updated = true
 		fallthrough
 	case "0.3.4":
-		log.Println("Updating schema from 0.3.4")
+		logger.Info("updating schema", "from_version", "0.3.4")
 		err = migrateForV0v3v5(instanceId)
 		if err != nil {
 			return false, err
@@ -413,7 +412,7 @@ func GetWebSettings(settings *mainStruct.WebSettings, instanceId int64) {
 		`SELECT param_name, param_value FROM web_settings WHERE instance_id = $1`, instanceId,
 	)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetWebSettings failed", "err", err)
 		return
 	}
 	defer params.Close()
@@ -422,7 +421,7 @@ func GetWebSettings(settings *mainStruct.WebSettings, instanceId int64) {
 		var value string
 		err := params.Scan(&name, &value)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetWebSettings failed", "err", err)
 			return
 		}
 		settings.Set(name, value)

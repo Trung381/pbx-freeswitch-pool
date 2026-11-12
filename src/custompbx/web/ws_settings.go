@@ -2,9 +2,8 @@ package web
 
 import (
 	"custompbx/cfg"
-	"custompbx/logsafe"
+	"custompbx/logx"
 	"custompbx/webStruct"
-	"log"
 )
 
 func checkRelogin(data *webStruct.MessageData) webStruct.UserResponse {
@@ -16,7 +15,7 @@ func checkSettings(data *webStruct.MessageData) webStruct.UserResponse {
 }
 
 func setSettings(data *webStruct.MessageData) webStruct.UserResponse {
-	log.Printf("settings update requested payload=%s", logsafe.Redact(data.Payload))
+	logger.Info("settings update requested", logx.Safe("payload", data.Payload))
 	if data.Payload.Fs.Esl.Pass == "" || data.Payload.Fs.Esl.Port == 0 || data.Payload.Fs.Esl.Host == "" ||
 		data.Payload.Db.Host == "" || data.Payload.Db.Port == 0 || data.Payload.Db.Name == "" ||
 		data.Payload.Db.User == "" || data.Payload.Db.Pass == "" ||

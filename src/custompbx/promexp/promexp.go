@@ -6,7 +6,6 @@
 package promexp
 
 import (
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -169,7 +168,7 @@ func Handler() http.Handler { return promhttp.HandlerFor(registry, promhttp.Hand
 // the published 8080-8082 ports. An empty addr disables it.
 func Serve(addr string) {
 	if addr == "" {
-		log.Println("Prometheus metrics disabled")
+		logger.Info("Prometheus metrics disabled")
 		return
 	}
 	mux := http.NewServeMux()
@@ -180,8 +179,8 @@ func Serve(addr string) {
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      15 * time.Second,
 	}
-	log.Printf("Prometheus metrics listening on %s/metrics", addr)
+	logger.Info("Prometheus metrics listening", "addr", addr, "path", "/metrics")
 	if err := srv.ListenAndServe(); err != nil {
-		log.Printf("Prometheus metrics listener stopped: %v", err)
+		logger.Error("Prometheus metrics listener stopped", "err", err)
 	}
 }

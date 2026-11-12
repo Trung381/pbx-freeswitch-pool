@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"time"
 )
 
@@ -138,14 +137,14 @@ func GetWebUser(login string, instanceId int64) (*mainStruct.WebUser, error) {
 	)
 	defer user.Close()
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetWebUser failed", "err", err)
 		return nil, err
 	}
 	var wUser mainStruct.WebUser
 	for user.Next() {
 		err := user.Scan(&wUser.Id, &wUser.Login, &wUser.SipId, &wUser.WebRTCLib, &wUser.Ws, &wUser.VertoWs, &wUser.Stun, &wUser.Key, &wUser.Lang, &wUser.Locale, &wUser.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetWebUser failed", "err", err)
 			return nil, err
 		}
 	}
@@ -174,7 +173,7 @@ func GetWebUsers(users *mainStruct.WebUsers, instanceId int64) {
 		instanceId,
 	)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetWebUsers failed", "err", err)
 		return
 	}
 	defer user.Close()
@@ -182,7 +181,7 @@ func GetWebUsers(users *mainStruct.WebUsers, instanceId int64) {
 		var wUser mainStruct.WebUser
 		err := user.Scan(&wUser.Id, &wUser.Login, &wUser.GroupId, &wUser.SipId, &wUser.WebRTCLib, &wUser.Ws, &wUser.VertoWs, &wUser.Stun, &wUser.Key, &wUser.Lang, &wUser.Locale, &wUser.Avatar, &wUser.AvatarFormat, &wUser.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetWebUsers failed", "err", err)
 			return
 		}
 		wUser.Tokens = mainStruct.NewWebUserTokens()
@@ -220,7 +219,7 @@ func DelWebUserTokenById(id int64) (string, int64) {
 	var userId int64
 	err := db.QueryRow("DELETE FROM web_users_tokens WHERE id = $1 returning user_id", id).Scan(&userId)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("DelWebUserTokenById failed", "err", err)
 		return "", 0
 	}
 	return "deleted", userId
@@ -253,7 +252,7 @@ func GetWebUserByToken(token string) (*mainStruct.WebUser, error) {
 		HashToken(token),
 	)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetWebUserByToken failed", "err", err)
 		return nil, err
 	}
 	defer user.Close()
@@ -262,7 +261,7 @@ func GetWebUserByToken(token string) (*mainStruct.WebUser, error) {
 	for user.Next() {
 		err := user.Scan(&wUser.Id, &wUser.Login, &wUser.GroupId, &wUser.SipId, &wUser.WebRTCLib, &wUser.Ws, &wUser.VertoWs, &wUser.Stun, &wUser.Key, &wUser.Lang, &wUser.Locale, &wUser.Avatar, &wUser.AvatarFormat, &wUser.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetWebUserByToken failed", "err", err)
 			return nil, err
 		}
 	}
@@ -273,7 +272,7 @@ func DeleteWebUser(id int64) bool {
 	_, err := db.Exec(
 		`DELETE FROM web_users WHERE id = $1`, id)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("DeleteWebUser failed", "err", err)
 		return false
 	}
 	return true
@@ -283,7 +282,7 @@ func RenameWebUser(id int64, login string) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET login = $2 WHERE id = $1`, id, login)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("RenameWebUser failed", "err", err)
 		return false
 	}
 	return true
@@ -294,7 +293,7 @@ func AddWebUser(login, key string, groupId int, instanceId int64) int64 {
 	err := db.QueryRow(
 		`INSERT INTO web_users(login, key, group_id, instance_id) VALUES($1, $2, $3, $4) RETURNING id;`, login, key, groupId, instanceId).Scan(&id)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("AddWebUser failed", "err", err)
 		return id
 	}
 	return id
@@ -304,7 +303,7 @@ func SwitchWebUser(id int64, switcher bool) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET enabled = $1 WHERE id = $2`, switcher, id)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("SwitchWebUser failed", "err", err)
 		return false
 	}
 	return true
@@ -314,7 +313,7 @@ func UpdateWebUserPassword(id int64, key string) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET key = $2 WHERE id = $1`, id, key)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserPassword failed", "err", err)
 		return false
 	}
 	return true
@@ -324,7 +323,7 @@ func UpdateWebUserLangId(id, langId int64) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET lang = $2 WHERE id = $1`, id, langId)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserLangId failed", "err", err)
 		return false
 	}
 	return true
@@ -333,7 +332,7 @@ func UpdateWebUserLangId(id, langId int64) bool {
 func UpdateWebUserLocale(id int64, locale string) bool {
 	_, err := db.Exec(`UPDATE web_users SET locale = $2 WHERE id = $1`, id, locale)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserLocale failed", "err", err)
 		return false
 	}
 	return true
@@ -343,7 +342,7 @@ func UpdateWebUserSipId(id, sipId int64) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET sip_id = $2 WHERE id = $1`, id, sipId)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserSipId failed", "err", err)
 		return false
 	}
 	return true
@@ -353,7 +352,7 @@ func UpdateWebUserWs(id int64, ws string) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET ws = $2 WHERE id = $1`, id, ws)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserWs failed", "err", err)
 		return false
 	}
 	return true
@@ -363,7 +362,7 @@ func UpdateWebUserVertoWs(id int64, ws string) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET verto_ws = $2 WHERE id = $1`, id, ws)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserVertoWs failed", "err", err)
 		return false
 	}
 	return true
@@ -376,7 +375,7 @@ func UpdateWebUserWebRTCLib(id int64, lib string) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET webrtc_lib  = $2 WHERE id = $1`, id, lib)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserWebRTCLib failed", "err", err)
 		return false
 	}
 	return true
@@ -386,7 +385,7 @@ func UpdateWebUserStun(id int64, stun string) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET stun = $2 WHERE id = $1`, id, stun)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserStun failed", "err", err)
 		return false
 	}
 	return true
@@ -396,7 +395,7 @@ func UpdateWebUserAvatar(id int64, avatar, avatarFormat string) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET avatar = $2, avatar_format = $3 WHERE id = $1`, id, avatar, avatarFormat)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserAvatar failed", "err", err)
 		return false
 	}
 	return true
@@ -417,7 +416,7 @@ func GetWebUserTokens(userId int64) ([]mainStruct.WebUserToken, error) {
 		userId,
 	)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetWebUserTokens failed", "err", err)
 		return nil, err
 	}
 	defer user.Close()
@@ -426,7 +425,7 @@ func GetWebUserTokens(userId int64) ([]mainStruct.WebUserToken, error) {
 		var token mainStruct.WebUserToken
 		err := user.Scan(&token.Id, &token.Created, &token.Purpose, &token.Expires, &token.LastUsed)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetWebUserTokens failed", "err", err)
 			return nil, err
 		}
 		tokens = append(tokens, token)
@@ -439,7 +438,7 @@ func UpdateWebUserGroup(id int64, groupId int) bool {
 	_, err := db.Exec(
 		`UPDATE web_users SET group_id = $2 WHERE id = $1`, id, groupId)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("UpdateWebUserGroup failed", "err", err)
 		return false
 	}
 	return true

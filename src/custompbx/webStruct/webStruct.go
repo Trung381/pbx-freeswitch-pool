@@ -8,7 +8,6 @@ import (
 	"errors"
 	"github.com/gorilla/websocket"
 	"io"
-	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -287,7 +286,7 @@ func (c *WsContext) CloseWithReason(reason string) (closeErr error) {
 		if c.onClose != nil {
 			c.onClose(c)
 		}
-		log.Printf("component=websocket connection_id=%d user_id=%d operation=close reason=%q", c.ID, c.UserID(), reason)
+		logger.Info("websocket connection closing", "connection_id", c.ID, "user_id", c.UserID(), "reason", reason)
 	})
 	return closeErr
 }
@@ -328,7 +327,7 @@ func (c *WsContext) RecordHandlerFailure() {
 // SendWaiter listens on the SendChannel and sends messages through the WebSocket connection.
 func (c *WsContext) SendWaiter() {
 	if !c.writeLoopStarted.CompareAndSwap(false, true) {
-		log.Printf("component=websocket connection_id=%d user_id=%d operation=start_write_loop result=already_started", c.ID, c.UserID())
+		logger.Warn("websocket write loop already started", "connection_id", c.ID, "user_id", c.UserID())
 		return
 	}
 	if c.ws == nil {
@@ -350,13 +349,12 @@ func (c *WsContext) SendWaiter() {
 				return
 			}
 		case event := <-c.send:
-			// log.Printf("[WEBSOCKET] Send message: %+v\n", v)
 			err := c.ws.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			if err != nil {
 				if c.onWriteFailure != nil {
 					c.onWriteFailure()
 				}
-				log.Printf("component=websocket connection_id=%d user_id=%d operation=set_write_deadline error=%q", c.ID, c.UserID(), err)
+				logger.Error("websocket set_write_deadline failed", "connection_id", c.ID, "user_id", c.UserID(), "err", err)
 				c.CloseWithReason("write deadline failure")
 				return
 			}
@@ -365,15 +363,14 @@ func (c *WsContext) SendWaiter() {
 				if c.onWriteFailure != nil {
 					c.onWriteFailure()
 				}
-				log.Printf("component=websocket connection_id=%d user_id=%d operation=marshal_response error=%q", c.ID, c.UserID(), err)
+				logger.Error("websocket marshal_response failed", "connection_id", c.ID, "user_id", c.UserID(), "err", err)
 				continue
 			}
 
 			err = c.ws.WriteMessage(websocket.TextMessage, eventMsg)
 			// err = c.ws.WriteJSON(event)
 			if err != nil {
-				// fmt.Printf("ERROR on WriteJSON: %+v\n", err)
-				log.Printf("component=websocket connection_id=%d user_id=%d operation=write_message error=%q", c.ID, c.UserID(), err)
+				logger.Error("websocket write_message failed", "connection_id", c.ID, "user_id", c.UserID(), "err", err)
 				c.CloseWithReason("write failure")
 				return
 			}
@@ -384,7 +381,7 @@ func (c *WsContext) SendWaiter() {
 // ReadWaiter listens for incoming messages on the WebSocket connection and handles them using the provided handler function.
 func (c *WsContext) ReadWaiter(handler func(*Message, *WsContext)) {
 	if !c.readLoopStarted.CompareAndSwap(false, true) {
-		log.Printf("component=websocket connection_id=%d user_id=%d operation=start_read_loop result=already_started", c.ID, c.UserID())
+		logger.Warn("websocket read loop already started", "connection_id", c.ID, "user_id", c.UserID())
 		return
 	}
 	if c.ws == nil {
@@ -398,7 +395,7 @@ func (c *WsContext) ReadWaiter(handler func(*Message, *WsContext)) {
 		var msg *Message
 		_, r, err := c.ws.NextReader()
 		if err != nil {
-			log.Printf("component=websocket connection_id=%d user_id=%d operation=next_reader error=%q", c.ID, c.UserID(), err)
+			logger.Error("websocket next_reader failed", "connection_id", c.ID, "user_id", c.UserID(), "err", err)
 			c.CloseWithReason("read failure")
 			return
 		}
@@ -413,7 +410,7 @@ func (c *WsContext) ReadWaiter(handler func(*Message, *WsContext)) {
 
 		if err != nil {
 			messageType := messageTypeFromEnvelope(raw)
-			log.Printf("component=websocket connection_id=%d user_id=%d operation=decode_message error=%q", c.ID, c.UserID(), err)
+			logger.Error("websocket decode_message failed", "connection_id", c.ID, "user_id", c.UserID(), "err", err)
 			if !c.Enqueue(&UserResponse{Error: "invalid request payload", MessageType: messageType}) {
 				c.RecordHandlerFailure()
 				c.CloseWithReason("outbound queue full")
@@ -421,7 +418,7 @@ func (c *WsContext) ReadWaiter(handler func(*Message, *WsContext)) {
 			continue
 		}
 		if err := msg.Validate(); err != nil {
-			log.Printf("component=websocket connection_id=%d user_id=%d operation=validate_message error=%q", c.ID, c.UserID(), err)
+			logger.Error("websocket validate_message failed", "connection_id", c.ID, "user_id", c.UserID(), "err", err)
 			if !c.Enqueue(&UserResponse{Error: "invalid message", MessageType: messageTypeOrNone(msg.Event)}) {
 				c.RecordHandlerFailure()
 				c.CloseWithReason("outbound queue full")
@@ -429,7 +426,6 @@ func (c *WsContext) ReadWaiter(handler func(*Message, *WsContext)) {
 			continue
 		}
 		handler(msg, c)
-		// log.Printf("[WEBSOCKET] Got message: %+v\n", msg)
 	}
 }
 
@@ -559,7 +555,6 @@ func (h *WsHub) Broadcast(data UserResponse) {
 	for _, connection := range h.snapshot() {
 		subscribed := connection.Subscriptions.Get(data.MessageType)
 		if !subscribed && data.MessageType != BroadcastConnection {
-			// fmt.Println("NOT Subscribed")
 			continue
 		}
 

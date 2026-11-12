@@ -6,7 +6,6 @@ import (
 	"custompbx/mainStruct"
 	"encoding/xml"
 	"errors"
-	"log"
 	"strings"
 )
 
@@ -93,7 +92,7 @@ func GlobalVariablesDropToFile() (string, string, string) {
 	}
 	/*raw, err := SendBgapiCmd("system cat " + path + "/vars.xml")
 	if err != nil {
-		log.Println("Cant get global vars: " + err.Error())
+		logger.Error("Cant get global vars", "err", err)
 		return
 	}
 
@@ -103,7 +102,6 @@ func GlobalVariablesDropToFile() (string, string, string) {
 	decoder.CharsetReader = charset.NewReaderLabel
 	err = decoder.Decode(&parsed)
 	if err != nil {
-		//log.Println(err.Error())
 		return
 	}
 	var own []*X_PRE_PROCESS
@@ -118,7 +116,7 @@ func GlobalVariablesDropToFile() (string, string, string) {
 	if len(own) == 0 {
 		_, err = SendBgapiCmd("system cp " + path + "/vars.xml " + path + "/vars.xml.dump")
 		if err != nil {
-			log.Println("Cant get global vars: " + err.Error())
+			logger.Error("Cant get global vars", "err", err)
 			return
 		}
 	}*/
@@ -127,13 +125,13 @@ func GlobalVariablesDropToFile() (string, string, string) {
 	}*/
 	/*_, err = SendBgapiCmd("system grep -v \"\\meta_type=\"custompbx\\\"\" " + path + "/vars.xml >  " + path + "/vars.xml.proc")
 	if err != nil {
-		log.Println("Cant get global vars: " + err.Error())
+		logger.Error("Cant get global vars", "err", err)
 		return
 	}*/
 	var inc = mainStruct.Includer{XMLName: xml.Name{Space: "", Local: "include"}, Includes: newVars}
 	output, err := xml.MarshalIndent(inc, "", "  ")
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GlobalVariablesDropToFile failed", "err", err)
 		return "", "", ""
 	}
 	str := strings.Replace(string(output), "'", "\\'", -1)

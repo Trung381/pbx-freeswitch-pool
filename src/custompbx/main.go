@@ -17,6 +17,7 @@ import (
 	"custompbx/db"
 	"custompbx/fsesl"
 	"custompbx/hepHandler"
+	"custompbx/logx"
 	"custompbx/mainStruct"
 	"custompbx/metrics"
 	"custompbx/nocache"
@@ -38,7 +39,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
-	"log"
+	"log/slog"
 	"math/big"
 	"mime"
 	"net"
@@ -54,18 +55,17 @@ func main() {
 	eventChannel := make(chan interface{}, 42)
 	logsChannel := make(chan mainStruct.LogType, 420)
 
-	log.Println("CustomPBX development version: " + mainStruct.Version)
-	log.Println("Starting...")
+	logger.Info("CustomPBX starting", "version", mainStruct.Version)
 	callwebhook.Start(cfg.CustomPbx.CallWebhook)
 	daemonCache.InitDaemonState()
-	log.Println("DB")
+	logger.Info("starting database")
 	db.StartDB()
-	log.Println("Database connected.")
+	logger.Info("database connected")
 
 	pbxcache.InitCacheObjects()
 	webcache.InitCacheObjects()
 
-	log.Println("Events Handler")
+	logger.Info("starting events handler")
 	web.SetBroadcastChannel(eventChannel)
 	go web.TimeEvents()
 
@@ -73,35 +73,35 @@ func main() {
 	switchName := cache.GetCurrentInstanceName()
 	if switchName != "" {
 		if switchName != cfg.CustomPbx.Fs.Switchname {
-			log.Println("FS actual switchname is different from config file!!!")
+			logger.Error("FreeSWITCH switchname differs from config file", "switchname", switchName, "configured", cfg.CustomPbx.Fs.Switchname)
 			return
 		}
 	} else {
 		if cfg.CustomPbx.Fs.Switchname == "" {
-			log.Println("FS actual switchname is different from config file!!!")
+			logger.Error("FreeSWITCH switchname is not configured")
 			return
 		}
 		switchName = cfg.CustomPbx.Fs.Switchname
 		cache.SetCurrentInstanceName(cfg.CustomPbx.Fs.Switchname)
 	}
 	if switchName == "" {
-		log.Println("FS switchname is empty!")
+		logger.Error("FreeSWITCH switchname is empty")
 		return
 	}
-	log.Println("FS SWITHNAME is " + switchName)
+	logger.Info("FreeSWITCH switchname", "switchname", switchName)
 
-	log.Println("Cache")
+	logger.Info("initialising cache")
 	if daemonCache.State.DatabaseConnection {
 		pbxcache.InitRootDB()
 		db.InitCustomDB()
-		log.Println("Checking DB migration")
+		logger.Info("checking DB migration")
 		cache.InitCache()
 		ok, err := db.Migrate(switchName)
 		if err != nil {
-			log.Println("[ERROR] Database schema update met error " + err.Error() + "!")
+			logger.Error("database schema update failed", "err", err)
 		}
 		if ok {
-			log.Println("Database schema updated for version " + mainStruct.Version)
+			logger.Info("database schema updated", "version", mainStruct.Version)
 		}
 		nocache.InitDB()
 		db.InitLogDB()
@@ -114,22 +114,22 @@ func main() {
 		webcache.InitWebSettings(cache.GetCurrentInstanceId())
 		webcache.InitWebData()
 		if updated, err := fsesl.ApplyDemoCDRBootstrap(); err != nil {
-			log.Printf("Docker demo CDR bootstrap failed: %v", err)
+			logger.Error("docker demo CDR bootstrap failed", "err", err)
 		} else if updated {
-			log.Println("Docker demo CDR database connection configured")
+			logger.Info("docker demo CDR database connection configured")
 		}
 		recordingstore.Start()
 
-		log.Println("ESL Connection and handlers")
+		logger.Info("starting ESL connection and handlers")
 		go fsesl.ESLConnectKeeper(eventChannel, logsChannel)
 		go metrics.UpdateMetrics()
-		log.Println("FS logs collecting")
+		logger.Info("starting FreeSWITCH log collection")
 		go freeswitchLogHandler(logsChannel)
 
 		db.InitHEPDb()
 		go func() { hepHandler.StartHepListener(db.SaveHEPPackets, cache.GetCurrentInstanceId()) }()
 	} else {
-		log.Printf("no service connections DB: %t ESL: %t\n", daemonCache.State.DatabaseConnection, daemonCache.State.ESLConnection)
+		logger.Error("no service connections", "db", daemonCache.State.DatabaseConnection, "esl", daemonCache.State.ESLConnection)
 	}
 
 	promexp.SetCallbacks(
@@ -140,7 +140,7 @@ func main() {
 	// Private listener (not published by docker-compose); empty value disables it.
 	go promexp.Serve(metricsListenAddr())
 
-	log.Println("Web Handlers")
+	logger.Info("starting web handlers")
 	rCurl := chi.NewRouter()
 	configureMiddleware(rCurl)
 	rCurl.Post(cfg.CustomPbx.XMLCurl.Route, func(w http.ResponseWriter, r *http.Request) { dispatcher(w, r, eventChannel) })
@@ -170,30 +170,30 @@ func startServers(r chi.Router, cr chi.Router) {
 	curlCert, curlKey, webCert, webKey := checkAndCreateCerts()
 
 	if cfg.CustomPbx.XMLCurl.Secure {
-		log.Println("Starting XMLCurl Secure Server...")
+		logger.Info("starting XMLCurl server", "secure", true)
 		go func() {
-			log.Fatal(http.ListenAndServeTLS(cfg.CustomPbx.XMLCurl.Host+":"+strconv.Itoa(cfg.CustomPbx.XMLCurl.Port), curlCert, curlKey, cr))
+			logx.Fatal(logger, "XMLCurl server stopped", "err", http.ListenAndServeTLS(cfg.CustomPbx.XMLCurl.Host+":"+strconv.Itoa(cfg.CustomPbx.XMLCurl.Port), curlCert, curlKey, cr))
 		}()
 	} else {
-		log.Println("Starting XMLCurl Insecure Server...")
+		logger.Info("starting XMLCurl server", "secure", false)
 		go func() {
-			log.Fatal(http.ListenAndServe(cfg.CustomPbx.XMLCurl.Host+":"+strconv.Itoa(cfg.CustomPbx.XMLCurl.Port), cr))
+			logx.Fatal(logger, "XMLCurl server stopped", "err", http.ListenAndServe(cfg.CustomPbx.XMLCurl.Host+":"+strconv.Itoa(cfg.CustomPbx.XMLCurl.Port), cr))
 		}()
 	}
 
 	if cfg.CustomPbx.Web.Secure {
-		log.Println("Starting Web Secure Server...")
-		log.Fatal(http.ListenAndServeTLS(cfg.CustomPbx.Web.Host+":"+strconv.Itoa(cfg.CustomPbx.Web.Port), webCert, webKey, r))
+		logger.Info("starting web server", "secure", true)
+		logx.Fatal(logger, "web server stopped", "err", http.ListenAndServeTLS(cfg.CustomPbx.Web.Host+":"+strconv.Itoa(cfg.CustomPbx.Web.Port), webCert, webKey, r))
 	} else {
-		log.Println("Starting Web Insecure Server...")
-		log.Fatal(http.ListenAndServe(cfg.CustomPbx.Web.Host+":"+strconv.Itoa(cfg.CustomPbx.Web.Port), r))
+		logger.Info("starting web server", "secure", false)
+		logx.Fatal(logger, "web server stopped", "err", http.ListenAndServe(cfg.CustomPbx.Web.Host+":"+strconv.Itoa(cfg.CustomPbx.Web.Port), r))
 	}
 }
 
 func configureMiddleware(r chi.Router) {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(requestLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(render.SetContentType(render.ContentTypeJSON))
 	r.Use(middleware.Timeout(60 * time.Second))
@@ -223,7 +223,7 @@ func configureStaticRoutes(r chi.Router) {
 func dispatcher(w http.ResponseWriter, r *http.Request, events chan interface{}) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("Recovered in dispatcher", r)
+			logger.Error("recovered panic in dispatcher", "panic", fmt.Sprint(r))
 		}
 	}()
 	var response []byte
@@ -231,7 +231,7 @@ func dispatcher(w http.ResponseWriter, r *http.Request, events chan interface{})
 	var Header = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>` + "\n"
 	err := r.ParseForm()
 	if err != nil {
-		log.Println(err)
+		logger.Error("dispatcher failed", "err", err)
 		response = xmlcurl.NotFound(make(map[string]string))
 		w.Header().Set("Content-Type", "application/xml")
 		w.Write(append([]byte(Header), response...))
@@ -241,9 +241,7 @@ func dispatcher(w http.ResponseWriter, r *http.Request, events chan interface{})
 	form := make(map[string]string)
 	for key := range r.PostForm {
 		form[key] = r.PostFormValue(key)
-		//log.Println(key, r.PostFormValue(key))
 	}
-	//log.Println()
 	switch r.FormValue("section") {
 	case "directory":
 		response = xmlcurl.Directory(form)
@@ -397,7 +395,7 @@ func Web(rw http.ResponseWriter, r *http.Request) {
 	if file == nil {
 		file, err = cweb.Asset(filePath)
 		if err != nil {
-			log.Println(err)
+			logger.Error("Web failed", "err", err)
 			file = cweb.MustAsset("index.html")
 		}
 	}
@@ -406,7 +404,7 @@ func Web(rw http.ResponseWriter, r *http.Request) {
 	_, err = rw.Write(file)
 	if err != nil {
 		// print unknown error
-		log.Println(err)
+		logger.Error("Web failed", "err", err)
 	}
 }
 
@@ -484,13 +482,13 @@ func freeswitchLogHandler(logsChannel chan mainStruct.LogType) {
 
 func turnServer() {
 	if cfg.CustomPbx.Web.StunPort < 3000 || cfg.CustomPbx.Web.StunPort > 65765 {
-		log.Println("STUN/TURN: stun port not in range 3000-65535 ")
+		logger.Error("STUN/TURN: stun port not in range 3000-65535")
 		daemonCache.State.StunServerStatus = false
 		return
 	}
 	udpListener, err := net.ListenPacket("udp4", "0.0.0.0:"+strconv.Itoa(cfg.CustomPbx.Web.StunPort))
 	if err != nil {
-		log.Println("STUN/TURN: Failed to create TURN server listener: ", err)
+		logger.Error("STUN/TURN: failed to create TURN server listener", "err", err)
 		return
 	}
 
@@ -505,16 +503,16 @@ func turnServer() {
 	}
 	relayIP := net.ParseIP(relayAddress)
 	if relayIP == nil {
-		log.Printf("STUN/TURN: invalid PBX_TURN_EXTERNAL_IP %q", relayAddress)
+		logger.Error("STUN/TURN: invalid PBX_TURN_EXTERNAL_IP", "value", relayAddress)
 		daemonCache.State.StunServerStatus = false
 		return
 	}
 	if relayIP.IsUnspecified() {
-		log.Println("STUN/TURN: PBX_TURN_EXTERNAL_IP is not configured; STUN works but relayed media will advertise an unusable address")
+		logger.Warn("STUN/TURN: PBX_TURN_EXTERNAL_IP is not configured; STUN works but relayed media will advertise an unusable address")
 	}
 	tcpListener, err := net.Listen("tcp4", "0.0.0.0:"+strconv.Itoa(cfg.CustomPbx.Web.StunPort))
 	if err != nil {
-		log.Println("STUN/TURN: Failed to create TCP listener: ", err)
+		logger.Error("STUN/TURN: failed to create TCP listener", "err", err)
 		daemonCache.State.StunServerStatus = false
 		_ = udpListener.Close()
 		return
@@ -531,7 +529,7 @@ func turnServer() {
 	tlsKeyFile := strings.TrimSpace(os.Getenv("PBX_TURN_TLS_KEY_FILE"))
 	if tlsCertFile != "" || tlsKeyFile != "" {
 		if tlsCertFile == "" || tlsKeyFile == "" {
-			log.Println("STUN/TURN: both PBX_TURN_TLS_CERT_FILE and PBX_TURN_TLS_KEY_FILE are required")
+			logger.Error("STUN/TURN: both PBX_TURN_TLS_CERT_FILE and PBX_TURN_TLS_KEY_FILE are required")
 			daemonCache.State.StunServerStatus = false
 			_ = udpListener.Close()
 			_ = tcpListener.Close()
@@ -540,7 +538,7 @@ func turnServer() {
 
 		tlsPort, err = turnTLSPort(os.Getenv("PBX_TURN_TLS_PORT"))
 		if err != nil {
-			log.Println("STUN/TURN: ", err)
+			logger.Error("STUN/TURN: TLS configuration failed", "err", err)
 			daemonCache.State.StunServerStatus = false
 			_ = udpListener.Close()
 			_ = tcpListener.Close()
@@ -548,7 +546,7 @@ func turnServer() {
 		}
 		certificate, loadErr := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
 		if loadErr != nil {
-			log.Println("STUN/TURN: Failed to load TLS certificate: ", loadErr)
+			logger.Error("STUN/TURN: failed to load TLS certificate", "err", loadErr)
 			daemonCache.State.StunServerStatus = false
 			_ = udpListener.Close()
 			_ = tcpListener.Close()
@@ -559,7 +557,7 @@ func turnServer() {
 			Certificates: []tls.Certificate{certificate},
 		})
 		if listenErr != nil {
-			log.Println("STUN/TURN: Failed to create TLS listener: ", listenErr)
+			logger.Error("STUN/TURN: failed to create TLS listener", "err", listenErr)
 			daemonCache.State.StunServerStatus = false
 			_ = udpListener.Close()
 			_ = tcpListener.Close()
@@ -588,15 +586,15 @@ func turnServer() {
 		ListenerConfigs: listenerConfigs,
 	})
 	if err != nil {
-		log.Println("STUN: ", err)
+		logger.Error("STUN server failed", "err", err)
 		daemonCache.State.StunServerStatus = false
 		return
 	}
 
 	if tlsPort == 0 {
-		log.Printf("STUN/TURN server listening on UDP/TCP %d; TLS disabled", cfg.CustomPbx.Web.StunPort)
+		logger.Info("STUN/TURN server listening", "port", cfg.CustomPbx.Web.StunPort, "tls", false)
 	} else {
-		log.Printf("STUN/TURN server listening on UDP/TCP %d and TLS %d", cfg.CustomPbx.Web.StunPort, tlsPort)
+		logger.Info("STUN/TURN server listening", "port", cfg.CustomPbx.Web.StunPort, "tls_port", tlsPort, "tls", true)
 	}
 	daemonCache.State.StunServerStatus = true
 	sigs := make(chan interface{}, 1)
@@ -653,10 +651,10 @@ func checkAndCreateCerts() (string, string, string, string) {
 	var webKey = cfg.CustomPbx.Web.KeyPath
 
 	var err error
-	log.Println("Checking certs")
+	logger.Info("checking certs")
 	curlCert, curlKey, err = loadCertificateAndKey(curlCert, curlKey)
 	if err != nil {
-		log.Println("Certs Error: ", err.Error())
+		logger.Warn("certificate check failed, falling back to self-signed", "err", err)
 		curlCert = "./cert.pem"
 		curlKey = curlCert
 		_, err := os.ReadFile(curlCert)
@@ -669,10 +667,10 @@ func checkAndCreateCerts() (string, string, string, string) {
 		return curlCert, curlKey, curlCert, curlKey
 	}
 
-	log.Println("Checking Web cert", webCert, webKey)
+	logger.Info("checking web cert", "cert", webCert, "key", webKey)
 	webCert, webKey, err = loadCertificateAndKey(webCert, webKey)
 	if err != nil {
-		log.Println("Certs Error: ", err.Error())
+		logger.Warn("certificate check failed, falling back to self-signed", "err", err)
 		webCert = "./cert.pem"
 		webKey = webCert
 		_, err := os.ReadFile(webCert)
@@ -688,7 +686,7 @@ func createCert(filePath string) {
 	// Generate a new private key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		fmt.Println("Failed to generate private key:", err)
+		logger.Error("failed to generate private key", "err", err)
 		return
 	}
 
@@ -707,7 +705,7 @@ func createCert(filePath string) {
 	// Generate the certificate using the template and the private key
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
 	if err != nil {
-		fmt.Println("Failed to create certificate:", err)
+		logger.Error("failed to create certificate", "err", err)
 		return
 	}
 
@@ -731,17 +729,17 @@ func createCert(filePath string) {
 	// Save the combined PEM data to a file
 	combinedFile, err := os.Create(filePath)
 	if err != nil {
-		fmt.Println("Failed to create", filePath, "PEM file:", err)
+		logger.Error("failed to create PEM file", "path", filePath, "err", err)
 		return
 	}
 	defer combinedFile.Close()
 
 	if _, err := combinedFile.Write(pemBuffer); err != nil {
-		fmt.Println("Failed to create", filePath, "PEM file:", err)
+		logger.Error("failed to create PEM file", "path", filePath, "err", err)
 		return
 	}
 
-	fmt.Println("Self-signed certificate and private key have been generated and saved in", filePath)
+	logger.Info("self-signed certificate and private key generated", "path", filePath)
 }
 
 func loadCertificateAndKey(certFilePath, keyFilePath string) (string, string, error) {
@@ -799,14 +797,38 @@ func loadCertificateAndKey(certFilePath, keyFilePath string) (string, string, er
 		}
 	}
 
-	fmt.Println(
-		"The cert", certFilePath, "is valid.",
-		"Subject:", cert.Subject.CommonName,
-		"Issuer:", cert.Issuer.CommonName,
-		"Not Before:", cert.NotBefore,
-		"Not After:", cert.NotAfter,
-		"The key ", keyFile, "is valid.",
+	logger.Info("certificate is valid",
+		"cert", certFilePath, "key", keyFile,
+		"subject", cert.Subject.CommonName, "issuer", cert.Issuer.CommonName,
+		"not_before", cert.NotBefore, "not_after", cert.NotAfter,
 	)
 
 	return certFilePath, keyFile, nil
+}
+
+// requestLogger replaces chi's middleware.Logger (which wrote unstructured
+// text through the std logger) with a structured slog access log.
+// Successful requests are Debug (XML-CURL is polled constantly); 5xx are
+// Error and 4xx Warn.
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		start := time.Now()
+		next.ServeHTTP(ww, r)
+		status := ww.Status()
+		if status == 0 {
+			status = http.StatusOK
+		}
+		level := slog.LevelDebug
+		switch {
+		case status >= 500:
+			level = slog.LevelError
+		case status >= 400:
+			level = slog.LevelWarn
+		}
+		logger.Log(r.Context(), level, "http request",
+			"method", r.Method, "path", r.URL.Path, "status", status,
+			"bytes", ww.BytesWritten(), "duration_ms", time.Since(start).Milliseconds(),
+			"remote_addr", r.RemoteAddr, "request_id", middleware.GetReqID(r.Context()))
+	})
 }

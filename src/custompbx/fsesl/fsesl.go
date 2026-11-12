@@ -9,7 +9,7 @@ import (
 	"custompbx/cfg"
 	"custompbx/daemonCache"
 	"custompbx/intermediateDB"
-	"custompbx/logsafe"
+	"custompbx/logx"
 	"custompbx/mainStruct"
 	"custompbx/pbxcache"
 	"custompbx/promexp"
@@ -22,7 +22,6 @@ import (
 	"github.com/zusrut/fsock"
 	"golang.org/x/net/html/charset"
 	"io"
-	"log"
 	"math/rand"
 	"os"
 	"regexp"
@@ -241,7 +240,7 @@ func SetGlobalVariables() {
 	}
 	res, err := SendBgapiCmd("global_getvar")
 	if err != nil {
-		log.Println("Cant get global vars: " + err.Error())
+		logger.Error("Cant get global vars", "err", err)
 		return
 	}
 	s := strings.Split(res, "\n")
@@ -303,32 +302,32 @@ func SetGlobalVariables() {
 
 func SaveToFile(body, path, fileName string, withEsl bool) {
 	if body == "" || path == "" || fileName == "" {
-		log.Printf("Cant DropToFileWithEsl: empty body/path/fileName path=%q fileName=%q", path, fileName)
+		logger.Warn("DropToFileWithEsl skipped: empty body, path or file name", "path", path, "file_name", fileName)
 		return
 	}
 	if withEsl {
-		log.Println("ESL!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		logger.Debug("saving file via ESL", "path", path, "file_name", fileName)
 		DropToFileWithEsl(body, path, fileName)
 		return
 	}
-	log.Println("OS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	logger.Debug("saving file via OS", "path", path, "file_name", fileName)
 	DropToFileWithOs(body, path, fileName)
 }
 
 func DropToFileWithEsl(body, path, fileName string) {
 	_, err := SendBgapiCmd("system echo -e '" + body + "' > " + path + "/" + fileName + ".pr")
 	if err != nil {
-		log.Println("Cant DropToFileWithEsl: " + err.Error())
+		logger.Error("Cant DropToFileWithEsl", "err", err)
 		return
 	}
 	_, err = SendBgapiCmd("system cp -n " + path + "/" + fileName + " " + path + "/" + fileName + ".dump")
 	if err != nil {
-		log.Println("Cant DropToFileWithEsl: " + err.Error())
+		logger.Error("Cant DropToFileWithEsl", "err", err)
 		return
 	}
 	_, err = SendBgapiCmd("system mv " + path + "/" + fileName + ".pr " + path + "/" + fileName)
 	if err != nil {
-		log.Println("Cant DropToFileWithEsl: " + err.Error())
+		logger.Error("Cant DropToFileWithEsl", "err", err)
 	}
 }
 
@@ -383,36 +382,36 @@ func copyFile(src, dst string, bufferSize int64) error {
 func DropToFileWithOs(body, path, fileName string) {
 	f, err := os.Create(path + "/" + fileName + ".pr")
 	if err != nil || f == nil {
-		log.Println("Cant DropToFileWithEsl: " + err.Error())
+		logger.Error("Cant DropToFileWithEsl", "err", err)
 	}
 	defer f.Close()
 
 	body = strings.Replace(body, "\\n", "\n", -1)
 	_, err2 := f.WriteString(body)
 	if err2 != nil {
-		log.Println("Cant DropToFileWithEsl: " + err.Error())
+		logger.Error("Cant DropToFileWithEsl", "err", err)
 	}
 
 	err = copyFile(path+"/"+fileName, path+"/"+fileName+".dump", 4096)
 	if err != nil && err.Error() != fmt.Sprintf("file %s already exists", path+"/"+fileName+".dump") {
-		log.Println("Cant DropToFileWithEsl: " + err.Error())
+		logger.Error("Cant DropToFileWithEsl", "err", err)
 		return
 	}
 	err = os.Rename(path+"/"+fileName+".pr", path+"/"+fileName)
 	if err != nil {
-		log.Println("Cant DropToFileWithEsl: " + err.Error())
+		logger.Error("Cant DropToFileWithEsl", "err", err)
 	}
 }
 
 func ImportGlobalVariables() {
 	vars := pbxcache.GetGlobalVariableNamedList()
 	if len(vars) != 0 {
-		log.Println("Global vars already exists")
+		logger.Debug("global vars already exist")
 		return
 	}
 	res, err := SendBgapiCmd("global_getvar")
 	if err != nil {
-		log.Println("Cant get global vars: " + err.Error())
+		logger.Error("Cant get global vars", "err", err)
 		return
 	}
 	s := strings.Split(res, "\n")
@@ -465,7 +464,7 @@ func FirstConnectData() {
 }
 
 func ESLConnectKeeper(eventChannel chan interface{}, logsChannel chan mainStruct.LogType) {
-	log.Println("Connection to ESL")
+	logger.Info("connecting to ESL")
 	tenSecondsTick := time.NewTicker(10 * time.Second)
 	reconcileTick := time.NewTicker(30 * time.Second)
 	defer tenSecondsTick.Stop()
@@ -482,7 +481,7 @@ func ESLConnectKeeper(eventChannel chan interface{}, logsChannel chan mainStruct
 				daemonCache.State.ESLConnection = true
 				continue
 			}
-			log.Println("Reconnecting to ESL...")
+			logger.Warn("reconnecting to ESL")
 			promexp.ObserveESLReconnect()
 			daemonCache.State.ESLConnection = false
 			Connect(eventChannel, logsChannel)
@@ -491,7 +490,7 @@ func ESLConnectKeeper(eventChannel chan interface{}, logsChannel chan mainStruct
 			}
 			switchName, _ := SendBgapiCmd(CommandSwitchname)
 			if switchName == "" || switchName != cache.GetCurrentInstanceName() {
-				log.Println("FS actual switchname is different from config file!!!")
+				logger.Warn("FreeSWITCH switchname differs from config file")
 				continue
 			}
 			go StartListenFSEvents()
@@ -557,7 +556,7 @@ func Connect(eventChannel chan interface{}, logsChannel chan mainStruct.LogType)
 		daemonCache.State.ESLConnection = false
 	} else {
 		daemonCache.State.ESLConnection = true
-		log.Println("Esl connected.")
+		logger.Info("ESL connected")
 	}
 
 	eventChannel <- daemonCache.State
@@ -590,7 +589,7 @@ func StartListenFSEvents() {
 	err := esl.ReadEvents()
 	if err != nil && esl != nil {
 		_ = esl.Disconnect()
-		log.Println("Esl Disconnected.")
+		logger.Warn("ESL disconnected")
 		return
 	}
 }
@@ -627,7 +626,6 @@ func moduleHandler(event string, id int, eventChannel chan interface{}) {
 		module, err = altData.GetModuleByName(eventMap[NameName])
 	}
 	if module == nil || err != nil {
-		// log.Println("no cache for module: " + eventMap[NameName])
 		return
 	}
 
@@ -1023,7 +1021,7 @@ func logDelayedChannelEvent(eventMap map[string]string) {
 	if delay < 60 && delay > -60 {
 		return
 	}
-	log.Printf("delayed FreeSWITCH event event=%s uuid=%s delay_seconds=%d", eventMap[EventName], eventMap[NameChannelUuid], delay)
+	logx.WithCall(logger, eventMap[NameChannelUuid]).Debug("delayed FreeSWITCH event", "event", eventMap[EventName], "delay_seconds", delay)
 }
 
 func requestFreeSwitchClockSync() {
@@ -1032,10 +1030,10 @@ func requestFreeSwitchClockSync() {
 	}
 	response, err := SendBgapiCmd("fsctl sync_clock_when_idle")
 	if err != nil {
-		log.Printf("FreeSWITCH clock synchronization failed: %v", err)
+		logger.Error("FreeSWITCH clock synchronization failed", "err", err)
 		return
 	}
-	log.Printf("FreeSWITCH clock synchronization requested: %s", strings.TrimSpace(response))
+	logger.Info("FreeSWITCH clock synchronization requested", "response", strings.TrimSpace(response))
 }
 
 func publishChannelCounters(eventChannel chan interface{}, channels *mainStruct.Channels) {
@@ -1074,7 +1072,7 @@ func sofiaRegsHandler(event string, id int, eventChannel chan interface{}) {
 
 	domain := GetDomainByName(domainName)
 	if domain == nil {
-		log.Println("no domain: " + domainName)
+		logger.Debug("domain not found", "domain", domainName)
 		return
 	}
 
@@ -1085,7 +1083,7 @@ func sofiaRegsHandler(event string, id int, eventChannel chan interface{}) {
 
 	user := GetDomainUserByName(userName, domain)
 	if user == nil {
-		log.Println("no user: " + userName)
+		logger.Debug("user not found", "user", userName, "domain", domainName)
 		return
 	}
 	directoryCache := cache.GetDirectoryCache()
@@ -1167,7 +1165,7 @@ func sofiaProfileHandler(event string, id int, eventChannel chan interface{}) {
 	profileName := eventMap[HeaderProfileName]
 	profile := altData.GetSofiaProfileByName(profileName)
 	if profile == nil {
-		log.Println("no profile")
+		logger.Debug("sofia profile not found", "profile", profileName)
 		return
 	}
 	if eventMap[EventName] == NamePublish {
@@ -1202,7 +1200,7 @@ func sofiaGatewayHandler(event string, id int, eventChannel chan interface{}) {
 	}
 	gateway := altData.GetSofiaProfileGateway(gatewayName)
 	if gateway == nil {
-		log.Println("no gateway")
+		logger.Debug("sofia gateway not found", "gateway", gatewayName)
 		return
 	}
 	switch eventMap[EventSubclass] {
@@ -1254,13 +1252,13 @@ func vertoRegsHandler(event string, id int, eventChannel chan interface{}) {
 	if domain == nil {
 		domain = GetDomainByName(res[2])
 		if domain == nil {
-			log.Println("no domain")
+			logger.Debug("domain not found")
 			return
 		}
 	}
 	user := GetDomainUserByName(userName, domain)
 	if user == nil {
-		log.Println("no user")
+		logger.Debug("user not found")
 		return
 	}
 	directoryCache := cache.GetDirectoryCache()
@@ -1385,12 +1383,12 @@ func GetDirectorySipRegs() {
 	for _, reg := range regs.Registrations {
 		domain := domains[reg.Realm]
 		if domain == nil {
-			log.Println("no domain")
+			logger.Debug("domain not found")
 			continue
 		}
 		user := GetDomainUserByName(reg.RegUser, domain)
 		if user == nil {
-			log.Println("no user")
+			logger.Debug("user not found")
 			continue
 		}
 		cDomain := directoryCache.DomainCache.GetById(domain.Id)
@@ -1416,13 +1414,13 @@ func GetChannels(eventChannels ...chan interface{}) {
 	}
 	asJson, err := esl.SendApiCmd("show channels as json")
 	if err != nil {
-		log.Println("cant get channels", err)
+		logger.Error("cannot get channels", "err", err)
 		return
 	}
 	channels := channelsAsJson{}
 	err = json.Unmarshal([]byte(asJson), &channels)
 	if err != nil {
-		log.Println("can't marshal channels", err)
+		logger.Error("cannot unmarshal channels", "err", err)
 		return
 	}
 	cCache := pbxcache.GetChannelsCache()
@@ -1470,7 +1468,6 @@ func GetChannels(eventChannels ...chan interface{}) {
 func GetXMLSofia() *XmlSofia {
 	asXML, err := esl.SendApiCmd("sofia xmlstatus")
 	if err != nil {
-		//log.Println(err.Error())
 		return nil
 	}
 	statuses := XmlSofia{}
@@ -1563,7 +1560,6 @@ func GetSofiaStatuses() {
 	}
 	asXML, err := esl.SendApiCmd("sofia xmlstatus")
 	if err != nil {
-		//log.Println(err.Error())
 		return
 	}
 	statuses := XmlSofia{}
@@ -1572,7 +1568,6 @@ func GetSofiaStatuses() {
 	decoder.CharsetReader = charset.NewReaderLabel
 	err = decoder.Decode(&statuses)
 	if err != nil {
-		//log.Println(err.Error())
 		return
 	}
 	var newUris []string
@@ -1617,7 +1612,6 @@ func GetVertoStatuses() {
 	}
 	asXML, err := esl.SendApiCmd("verto xmlstatus")
 	if err != nil {
-		//log.Println(err.Error())
 		return
 	}
 	statuses := XmlVerto{}
@@ -1626,7 +1620,7 @@ func GetVertoStatuses() {
 	decoder.CharsetReader = charset.NewReaderLabel
 	err = decoder.Decode(&statuses)
 	if err != nil {
-		log.Println(err.Error())
+		logger.Error("GetVertoStatuses failed", "err", err)
 		return
 	}
 
@@ -1650,12 +1644,12 @@ func GetVertoStatuses() {
 		}
 		domain := GetDomainByName(res[2])
 		if domain == nil {
-			log.Println("no domain")
+			logger.Debug("domain not found")
 			continue
 		}
 		user := GetDomainUserByName(res[1], domain)
 		if user == nil {
-			log.Println("no user")
+			logger.Debug("user not found")
 			continue
 		}
 		directoryCache := cache.GetDirectoryCache()
@@ -1747,7 +1741,7 @@ func GetXMLDirectory() {
 	var directoryXML xmlStruct.Section
 	err = xml.Unmarshal([]byte(rawXML), &directoryXML)
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("GetXMLDirectory failed", "err", err)
 		return
 	}
 	_ = initDirectoryDomain(directoryXML.Domain)
@@ -1846,7 +1840,7 @@ func luaXMLDirectoryImport(rawXML string, scriptName string, args []string, scri
 	var directoryXML xmlStruct.Document
 	err := xml.Unmarshal([]byte(rawXML), &directoryXML)
 	if err != nil {
-		log.Println(err.Error())
+		logger.Error("luaXMLDirectoryImport failed", "err", err)
 		return
 	}
 	for s := 0; s < len(directoryXML.Section); s++ {
@@ -1869,7 +1863,7 @@ func luaXMLDirectoryImport(rawXML string, scriptName string, args []string, scri
 					var directoryUserXML xmlStruct.Document
 					err := xml.Unmarshal([]byte(res), &directoryUserXML)
 					if err != nil {
-						log.Print(err.Error())
+						logger.Error("luaXMLDirectoryImport failed", "err", err)
 						directoryXML.Section[s].Domain[d].Groups.Group[g].Users.User[u] = nil
 						continue
 					}
@@ -1906,7 +1900,7 @@ func luaXMLDirectoryImport(rawXML string, scriptName string, args []string, scri
 				err := xml.Unmarshal([]byte(res), &directoryUserXML)
 				if err != nil {
 					directoryXML.Section[s].Domain[d].Users.User[u] = nil
-					log.Print(err.Error())
+					logger.Error("luaXMLDirectoryImport failed", "err", err)
 					continue
 				}
 				usr := getFirstUser(directoryUserXML)
@@ -1966,8 +1960,6 @@ func getFirstUser(directoryUserXML xmlStruct.Document) *xmlStruct.User {
 }
 
 func initDirectoryDomain(domains []*xmlStruct.Domain) error {
-	//fmt.Println(rawXML)
-	//fmt.Printf("%+v", directoryXML)
 
 	var errs []string
 	for _, eslDomain := range domains {
@@ -2163,7 +2155,7 @@ func GetXMLConfigurations() {
 	err = xml.Unmarshal([]byte(rawXML), &configurationXML)
 
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("GetXMLConfigurations failed", "err", err)
 		return
 	}
 
@@ -2202,7 +2194,7 @@ func GetXMLModuleConfigurationStruct(confName string) (*xmlStruct.Configuration,
 	err = xml.Unmarshal([]byte(rawXML), &configurationXML)
 
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("GetXMLModuleConfigurationStruct failed", "err", err)
 		return nil, errors.New("can't read config")
 	}
 
@@ -2406,7 +2398,7 @@ func setConfigAcl(conf *xmlStruct.Configuration) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("import acl config module=%s config=%s", logsafe.Redact(mod), logsafe.Redact(conf))
+	logger.Info("import acl config", "module", mod, logx.Safe("config", conf))
 	if conf.NetworkLists == nil || conf.NetworkLists.List == nil {
 		return errors.New("empty config object")
 	}
@@ -2544,23 +2536,23 @@ func setConfigCallcenter(conf *xmlStruct.Configuration) error {
 
 func GetCallcenterAgents() error {
 	if esl == nil || !esl.Connected() {
-		log.Println("no ECL connection")
+		logger.Warn("no ESL connection")
 		return errors.New("no ECL connection")
 	}
 	agents, err := esl.SendApiCmd(`json {"command": "callcenter_config", "data": {"arguments":"agent list"}}`)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetCallcenterAgents failed", "err", err)
 		return err
 	}
 
 	var agentsResponse mainStruct.CallcenterAgentsJSONResponse
 	err = json.Unmarshal([]byte(agents), &agentsResponse)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetCallcenterAgents failed", "err", err)
 		return err
 	}
 	if agentsResponse.Status != "success" {
-		log.Println("response status: ", agentsResponse.Status)
+		logger.Warn("callcenter agents response not successful", "status", agentsResponse.Status)
 		return errors.New("agents response status: " + agentsResponse.Status)
 	}
 	for _, agent := range agentsResponse.Response {
@@ -2587,7 +2579,7 @@ func GetCallcenterAgents() error {
 			localParseInt(agent.TalkTime),
 			localParseInt(agent.ReadyTime))
 		if err != nil {
-			log.Println(err)
+			logger.Error("GetCallcenterAgents failed", "err", err)
 			continue
 		}
 	}
@@ -2598,23 +2590,23 @@ func GetCallcenterAgents() error {
 func GetCallcenterTiers() error {
 	tiers, err := esl.SendApiCmd(`json {"command": "callcenter_config","data": {"arguments":"tier list"}}"`)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetCallcenterTiers failed", "err", err)
 		return err
 	}
 	var tiersResponse mainStruct.CallcenterTiersJSONResponse
 	err = json.Unmarshal([]byte(tiers), &tiersResponse)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetCallcenterTiers failed", "err", err)
 		return err
 	}
 	if tiersResponse.Status != "success" {
-		log.Println("tiers response status: ", tiersResponse.Status)
+		logger.Warn("callcenter tiers response not successful", "status", tiersResponse.Status)
 		return errors.New("tiers response status: " + tiersResponse.Status)
 	}
 	for _, tier := range tiersResponse.Response {
 		_, err := altData.SetConfCallcenterTier(tier.Queue, tier.Agent, tier.State, localParseInt(tier.Position), localParseInt(tier.Level))
 		if err != nil {
-			log.Println(err)
+			logger.Error("GetCallcenterTiers failed", "err", err)
 			continue
 		}
 	}
@@ -2624,13 +2616,13 @@ func GetCallcenterTiers() error {
 func GetCallcenterMembers() error {
 	members, err := esl.SendApiCmd(`json {"command": "callcenter_config","data": {"arguments":"member list"}}"`)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetCallcenterMembers failed", "err", err)
 		return err
 	}
 	var memberResponse mainStruct.CallcenterMembersJSONResponse
 	err = json.Unmarshal([]byte(members), &memberResponse)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetCallcenterMembers failed", "err", err)
 		return err
 	}
 	if memberResponse.Status != "success" {
@@ -2643,7 +2635,7 @@ func GetCallcenterMembers() error {
 			member.ServingAgent, member.ServingSystem, member.SessionUuid, member.SkillScore, member.SystemEpoch,
 		)
 		if err != nil {
-			log.Println(err)
+			logger.Error("GetCallcenterMembers failed", "err", err)
 			continue
 		}
 	}
@@ -2761,14 +2753,14 @@ func reloadDemoCDRModule() {
 	}
 	response, err := SendBgapiCmd("reload " + mainStruct.ModCdrPgCsv)
 	if err != nil {
-		log.Printf("Docker demo CDR module reload failed: %v", err)
+		logger.Error("docker demo CDR module reload failed", "err", err)
 		return
 	}
 	if strings.Contains(response, "-ERR") {
-		log.Printf("Docker demo CDR module reload failed: %s", strings.TrimSpace(response))
+		logger.Error("docker demo CDR module reload failed", "response", strings.TrimSpace(response))
 		return
 	}
-	log.Println("Docker demo CDR module reloaded")
+	logger.Info("docker demo CDR module reloaded")
 }
 
 func setConfigOdbcCdr(conf *xmlStruct.Configuration) error {
@@ -2848,7 +2840,7 @@ func setConfigConference(conf *xmlStruct.Configuration) error {
 		for _, room := range conf.Advertise.Room {
 			_, err := altData.SetConfConferenceAdvertise(mod, room.Attrname, room.Attrstatus)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigConference failed", "err", err)
 				continue
 			}
 		}
@@ -2916,7 +2908,7 @@ func setConfigConferenceLayouts(conf *xmlStruct.Configuration) error {
 		for _, eslGroup := range conf.LayoutSettings.Groups.Group {
 			group, err := altData.SetConfConferenceLayoutsGroups(mod, eslGroup.Attrname)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigConferenceLayouts failed", "err", err)
 				continue
 			}
 			for _, eslLayout := range eslGroup.Layout {
@@ -2932,7 +2924,7 @@ func setConfigConferenceLayouts(conf *xmlStruct.Configuration) error {
 		for _, eslLayout := range conf.LayoutSettings.Layouts.Layout {
 			layout, err := altData.SetConfConferenceLayoutLayouts(mod, eslLayout.Attrname)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigConferenceLayouts failed", "err", err)
 				continue
 			}
 			for _, eslImage := range eslLayout.Image {
@@ -3263,7 +3255,7 @@ func setConfigVerto(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigVertoSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigVerto failed", "err", err)
 				continue
 			}
 		}
@@ -3303,7 +3295,7 @@ func setConfigLcr(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigLcrSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigLcr failed", "err", err)
 				continue
 			}
 		}
@@ -3343,7 +3335,7 @@ func setConfigShout(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigShoutSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigShout failed", "err", err)
 				continue
 			}
 		}
@@ -3364,7 +3356,7 @@ func setConfigRedis(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigRedisSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigRedis failed", "err", err)
 				continue
 			}
 		}
@@ -3385,7 +3377,7 @@ func setConfigNibblebill(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigNibblebillSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigNibblebill failed", "err", err)
 				continue
 			}
 		}
@@ -3406,7 +3398,7 @@ func setConfigDb(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigDbSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigDb failed", "err", err)
 				continue
 			}
 		}
@@ -3427,7 +3419,7 @@ func setConfigMemcache(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigMemcacheSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigMemcache failed", "err", err)
 				continue
 			}
 		}
@@ -3448,7 +3440,7 @@ func setConfigAvmd(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigAvmdSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigAvmd failed", "err", err)
 				continue
 			}
 		}
@@ -3469,7 +3461,7 @@ func setConfigTtsCommandline(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigTtsCommandlineSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigTtsCommandline failed", "err", err)
 				continue
 			}
 		}
@@ -3490,7 +3482,7 @@ func setConfigCdrMongodb(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigCdrMongodbSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigCdrMongodb failed", "err", err)
 				continue
 			}
 		}
@@ -3511,7 +3503,7 @@ func setConfigHttpCache(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigHttpCacheSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigHttpCache failed", "err", err)
 				continue
 			}
 		}
@@ -3520,20 +3512,20 @@ func setConfigHttpCache(conf *xmlStruct.Configuration) error {
 		for _, profile := range conf.Profiles.Profile {
 			profileId, err := altData.SetConfigHttpCacheProfile(mod, profile.Attrname)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigHttpCache failed", "err", err)
 				continue
 			}
 			if profile.AWSS3 != nil {
 				_, err = altData.SetConfigHttpCacheProfileAWSS3(profileId, profile.AWSS3.AccessKeyID, profile.AWSS3.SecretAccessKey, profile.AWSS3.BaseDomain, profile.AWSS3.Region, profile.AWSS3.Expires)
 				if err != nil {
-					log.Println(err)
+					logger.Error("setConfigHttpCache failed", "err", err)
 					continue
 				}
 			}
 			if profile.AzureBlob != nil {
 				_, err = altData.SetConfigHttpCacheProfileAzureBlob(profileId, profile.AzureBlob.SecretAccessKey)
 				if err != nil {
-					log.Println(err)
+					logger.Error("setConfigHttpCache failed", "err", err)
 					continue
 				}
 			}
@@ -3563,7 +3555,7 @@ func setConfigOpus(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigOpusSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigOpus failed", "err", err)
 				continue
 			}
 		}
@@ -3584,7 +3576,7 @@ func setConfigPython(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigPythonSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigPython failed", "err", err)
 				continue
 			}
 		}
@@ -3605,7 +3597,7 @@ func setConfigAlsa(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigAlsaSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigAlsa failed", "err", err)
 				continue
 			}
 		}
@@ -3626,7 +3618,7 @@ func setConfigAmr(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigAmrSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigAmr failed", "err", err)
 				continue
 			}
 		}
@@ -3647,7 +3639,7 @@ func setConfigAmrwb(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigAmrwbSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigAmrwb failed", "err", err)
 				continue
 			}
 		}
@@ -3668,7 +3660,7 @@ func setConfigCepstral(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigCepstralSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigCepstral failed", "err", err)
 				continue
 			}
 		}
@@ -3689,7 +3681,7 @@ func setConfigCidlookup(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigCidlookupSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigCidlookup failed", "err", err)
 				continue
 			}
 		}
@@ -3710,7 +3702,7 @@ func setConfigCurl(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigCurlSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigCurl failed", "err", err)
 				continue
 			}
 		}
@@ -3731,7 +3723,7 @@ func setConfigDialplanDirectory(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigDialplanDirectorySetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigDialplanDirectory failed", "err", err)
 				continue
 			}
 		}
@@ -3752,7 +3744,7 @@ func setConfigEasyroute(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigEasyrouteSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigEasyroute failed", "err", err)
 				continue
 			}
 		}
@@ -3773,7 +3765,7 @@ func setConfigErlangEvent(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigErlangEventSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigErlangEvent failed", "err", err)
 				continue
 			}
 		}
@@ -3794,7 +3786,7 @@ func setConfigEventMulticast(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigEventMulticastSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigEventMulticast failed", "err", err)
 				continue
 			}
 		}
@@ -3815,7 +3807,7 @@ func setConfigFax(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigFaxSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigFax failed", "err", err)
 				continue
 			}
 		}
@@ -3836,7 +3828,7 @@ func setConfigLua(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigLuaSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigLua failed", "err", err)
 				continue
 			}
 		}
@@ -3857,7 +3849,7 @@ func setConfigMongo(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigMongoSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigMongo failed", "err", err)
 				continue
 			}
 		}
@@ -3878,7 +3870,7 @@ func setConfigMsrp(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigMsrpSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigMsrp failed", "err", err)
 				continue
 			}
 		}
@@ -3899,7 +3891,7 @@ func setConfigOreka(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigOrekaSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigOreka failed", "err", err)
 				continue
 			}
 		}
@@ -3920,7 +3912,7 @@ func setConfigPerl(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigPerlSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigPerl failed", "err", err)
 				continue
 			}
 		}
@@ -3941,7 +3933,7 @@ func setConfigPocketsphinx(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigPocketsphinxSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigPocketsphinx failed", "err", err)
 				continue
 			}
 		}
@@ -3962,7 +3954,7 @@ func setConfigSangomaCodec(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigSangomaCodecSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigSangomaCodec failed", "err", err)
 				continue
 			}
 		}
@@ -3983,7 +3975,7 @@ func setConfigSndfile(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigSndfileSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigSndfile failed", "err", err)
 				continue
 			}
 		}
@@ -4004,7 +3996,7 @@ func setConfigXmlCdr(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigXmlCdrSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigXmlCdr failed", "err", err)
 				continue
 			}
 		}
@@ -4025,7 +4017,7 @@ func setConfigXmlRpc(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigXmlRpcSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigXmlRpc failed", "err", err)
 				continue
 			}
 		}
@@ -4046,7 +4038,7 @@ func setConfigZeroconf(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigZeroconfSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigZeroconf failed", "err", err)
 				continue
 			}
 		}
@@ -4067,7 +4059,7 @@ func setConfigPostSwitch(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigPostSwitchSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigPostSwitch failed", "err", err)
 				continue
 			}
 		}
@@ -4076,7 +4068,7 @@ func setConfigPostSwitch(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.CliKeybindings.Key {
 			_, err := altData.SetConfigPostSwitchCliKeybinding(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigPostSwitch failed", "err", err)
 				continue
 			}
 		}
@@ -4085,7 +4077,7 @@ func setConfigPostSwitch(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.DefaultPtimes.Codec {
 			_, err := altData.SetConfigPostSwitchDefaultPtime(mod, param.Attrname, param.Attrptime)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigPostSwitch failed", "err", err)
 				continue
 			}
 		}
@@ -4106,7 +4098,7 @@ func setConfigDirectory(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigDirectorySetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigDirectory failed", "err", err)
 				continue
 			}
 		}
@@ -4146,12 +4138,12 @@ func setConfigFifo(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigFifoSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigFifo failed", "err", err)
 				continue
 			}
 		}
 	}
-	log.Printf("import fifo config=%s", logsafe.Redact(conf))
+	logger.Info("import config", "module", "fifo", logx.Safe("config", conf))
 	if conf.Fifos == nil {
 		return nil
 	}
@@ -4187,12 +4179,12 @@ func setConfigOpal(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigOpalSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigOpal failed", "err", err)
 				continue
 			}
 		}
 	}
-	log.Printf("import event_socket config=%s", logsafe.Redact(conf))
+	logger.Info("import config", "module", "event_socket", logx.Safe("config", conf))
 	if conf.Listeners == nil {
 		return nil
 	}
@@ -4228,12 +4220,12 @@ func setConfigOsp(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigOspSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigOsp failed", "err", err)
 				continue
 			}
 		}
 	}
-	log.Printf("import sofia config=%s", logsafe.Redact(conf))
+	logger.Info("import config", "module", "sofia", logx.Safe("config", conf))
 	if conf.Profiles == nil {
 		return nil
 	}
@@ -4269,12 +4261,12 @@ func setConfigUnicall(conf *xmlStruct.Configuration) error {
 		for _, param := range conf.Settings.Param {
 			_, err := altData.SetConfigUnicallSetting(mod, param.Attrname, param.Attrvalue)
 			if err != nil {
-				log.Println(err)
+				logger.Error("setConfigUnicall failed", "err", err)
 				continue
 			}
 		}
 	}
-	log.Printf("import freetdm config=%s", logsafe.Redact(conf))
+	logger.Info("import config", "module", "freetdm", logx.Safe("config", conf))
 	if conf.Spans == nil {
 		return nil
 	}
@@ -4387,17 +4379,15 @@ func GetXMLDialplan() {
 		err = xml.Unmarshal([]byte(rawXML), &dialplanXML)
 
 		if err != nil {
-			fmt.Println(err)
+			logger.Error("GetXMLDialplan failed", "err", err)
 			return
 		}
 	}
-	//fmt.Println(rawXML)
-	//fmt.Printf("%+v", directoryXML)
 
 	for _, eslContex := range dialplanXML.Context {
 		context, err := pbxcache.SetContext(eslContex.Attrname)
 		if err != nil {
-			log.Println(err.Error())
+			logger.Error("GetXMLDialplan failed", "err", err)
 			continue
 		}
 
@@ -4496,13 +4486,13 @@ func getFPBXContexts() (xmlStruct.Section, bool) {
 	command := `lua ~local Database=require "resources.functions.database";dbh=Database.new('system');assert(dbh:connected());hash={};local res="[";sql="select coalesce(dialplan_context, '') as dialplan_context from v_dialplans;";dbh:query(sql,{},function(row) if (not hash[row.dialplan_context]) then res=res..'"'..row.dialplan_context..'",';hash[row.dialplan_context]=true;end;end);dbh:release();res=res..'""]';stream:write(res);`
 	res, err := esl.SendApiCmd(command)
 	if err != nil {
-		log.Println(err.Error())
+		logger.Error("getFPBXContexts failed", "err", err)
 		return xmlStruct.Section{}, false
 	}
 	var contexts []string
 	err = json.Unmarshal([]byte(res), &contexts)
 	if err != nil {
-		log.Println(err.Error())
+		logger.Error("getFPBXContexts failed", "err", err)
 		return xmlStruct.Section{}, false
 	}
 
@@ -4513,14 +4503,14 @@ func getFPBXContexts() (xmlStruct.Section, bool) {
 		}
 		resp, ok := luaXMLRequest("dialplan", scriptName, args, scriptPath, map[string]string{"Caller-Context": context})
 		if !ok {
-			log.Println("NOT OK!")
+			logger.Warn("lua XML request failed", "script", scriptName, "context", context)
 			continue
 		}
 		resp = fixBrokenXML(resp)
 		var dialplanNewXML xmlStruct.Document
 		err := xml.Unmarshal([]byte(resp), &dialplanNewXML)
 		if err != nil {
-			log.Println(err.Error(), resp)
+			logger.Error("cannot parse dialplan XML", "err", err, "response_bytes", len(resp))
 			continue
 		}
 		if len(dialplanNewXML.Section) == 0 || len(dialplanNewXML.Section[0].Context) == 0 {

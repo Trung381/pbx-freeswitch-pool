@@ -12,7 +12,6 @@ import (
 	"custompbx/xmlStruct"
 	"fmt"
 	"github.com/custompbx/customorm"
-	"log"
 )
 
 func getConfParent(name string) *altStruct.ConfigurationsList {
@@ -123,7 +122,7 @@ func getConferenceLayoutsConfig(data *webStruct.MessageData, item interface{}) w
 
 func getConfigInnerParent(data *webStruct.MessageData, item interface{}) webStruct.UserResponse {
 	filter := map[string]customorm.FilterFields{"Parent": {Flag: true}}
-	log.Printf("%+v", item)
+	logger.Debug("config item", "type", fmt.Sprintf("%T", item))
 	res, err := intermediateDB.GetByValuesAsMap(
 		item,
 		filter,
@@ -152,7 +151,7 @@ func delConfig(data *webStruct.MessageData, item interface{}) webStruct.UserResp
 }
 
 func setConfig(data *webStruct.MessageData, item interface{}) webStruct.UserResponse {
-	log.Printf("%+v", item)
+	logger.Debug("config item", "type", fmt.Sprintf("%T", item))
 	res, err := intermediateDB.InsertItem(item)
 	if err != nil {
 		return webStruct.UserResponse{Error: err.Error(), MessageType: data.Event}
