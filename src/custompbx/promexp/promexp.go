@@ -92,6 +92,30 @@ func SetGatewayState(name, state string) {
 	gatewayState[name] = state
 }
 
+// LoadGatewayStatus seeds gateway states from the table printed by
+// `sofia status gateway`, e.g.
+//
+//	external::oneconnect  sip:u@host:5060  NOREG  24.10  0/0  0/0
+//
+// It is used once the ESL connection is up so that pbx_gateway_* exists before
+// the first sofia::gateway_state event. Unrecognised lines are ignored.
+func LoadGatewayStatus(output string) int {
+	n := 0
+	for _, line := range strings.Split(output, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 || !strings.Contains(f[0], "::") || !strings.HasPrefix(f[1], "sip:") {
+			continue
+		}
+		name := f[0][strings.Index(f[0], "::")+2:]
+		if name == "" {
+			continue
+		}
+		SetGatewayState(name, strings.ToUpper(f[2]))
+		n++
+	}
+	return n
+}
+
 type gatewayCollector struct {
 	reged *prometheus.Desc
 	state *prometheus.Desc

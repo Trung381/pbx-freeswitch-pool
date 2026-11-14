@@ -473,6 +473,7 @@ func ESLConnectKeeper(eventChannel chan interface{}, logsChannel chan mainStruct
 	go StartListenFSEvents()
 	requestFreeSwitchClockSync()
 	CollectAndSetESLDataESLData(eventChannel)
+	go seedGatewayMetrics()
 
 	for {
 		select {
@@ -496,6 +497,7 @@ func ESLConnectKeeper(eventChannel chan interface{}, logsChannel chan mainStruct
 			go StartListenFSEvents()
 			requestFreeSwitchClockSync()
 			CollectAndSetESLDataESLData(eventChannel)
+			go seedGatewayMetrics()
 		case <-reconcileTick.C:
 			if esl != nil && esl.Connected() {
 				GetChannels(eventChannel)
@@ -1022,6 +1024,17 @@ func logDelayedChannelEvent(eventMap map[string]string) {
 		return
 	}
 	logx.WithCall(logger, eventMap[NameChannelUuid]).Debug("delayed FreeSWITCH event", "event", eventMap[EventName], "delay_seconds", delay)
+}
+
+// seedGatewayMetrics initialises pbx_gateway_* from the current FreeSWITCH
+// state, because sofia::gateway_state events only fire on changes.
+func seedGatewayMetrics() {
+	out, err := SendBgapiCmd("sofia status gateway")
+	if err != nil {
+		logger.Warn("gateway status seed failed", "err", err)
+		return
+	}
+	logger.Info("gateway metrics seeded", "gateways", promexp.LoadGatewayStatus(out))
 }
 
 func requestFreeSwitchClockSync() {

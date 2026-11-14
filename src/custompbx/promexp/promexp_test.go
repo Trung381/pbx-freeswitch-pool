@@ -25,3 +25,24 @@ func TestMetricsExposed(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadGatewayStatus(t *testing.T) {
+	out := `    Profile::Gateway-Name	                        Data    	State	Ping Time	IB Calls(F/T)	OB Calls(F/T)
+=================================================================================================
+     external::oneconnect	sip:oneconnect@125.212.225.105:33333	NOREG	 24.10	0/0	0/0
+        external::callbot	sip:FreeSWITCH@103.69.97.113:5080	REGED	  1.56	0/0	0/0
+=================================================================================================
+2 gateways: Inbound(Failed/Total): 0/0,Outbound(Failed/Total):0/0
+`
+	if n := LoadGatewayStatus(out); n != 2 {
+		t.Fatalf("parsed %d gateways, want 2", n)
+	}
+	rec := httptest.NewRecorder()
+	Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
+	body := rec.Body.String()
+	for _, want := range []string{`pbx_gateway_registered{gateway="callbot"} 1`, `pbx_gateway_registered{gateway="oneconnect"} 0`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+}
