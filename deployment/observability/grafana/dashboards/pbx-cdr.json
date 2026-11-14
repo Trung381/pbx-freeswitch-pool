@@ -13,7 +13,7 @@
  "graphTooltip": 1,
  "refresh": "5m",
  "time": {
-  "from": "now-7d",
+  "from": "now-90d",
   "to": "now"
  },
  "templating": {

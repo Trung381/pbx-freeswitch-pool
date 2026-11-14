@@ -90,6 +90,7 @@ services:
       - --collector.vmstat
       - --collector.filefd
       - --collector.time
+      - --collector.stat
       - --collector.pressure
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|var/lib/containerd/.+)($|/)
     volumes:
@@ -138,7 +139,7 @@ services:
       # mount read-only chi han che ghi file, khong han che API. Chap nhan cho dev; xem README.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks: [obs]
-    mem_limit: 192m
+    mem_limit: 256m
     cpus: 0.5
 
   grafana:

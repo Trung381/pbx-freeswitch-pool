@@ -78,7 +78,7 @@
        }
       }
      ],
-     "noValue": "Chua deploy /metrics"
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
     },
     "overrides": []
    },
@@ -94,7 +94,7 @@
     "graphMode": "area",
     "textMode": "auto"
    },
-   "description": "DOWN cho den khi custompbx duoc build/deploy lai voi endpoint /metrics (cong 9102, noi bo docker)."
+   "description": "Prometheus scrape custompbx qua cong 9102 (noi bo docker, khong publish). DOWN = custompbx chet hoac chua co endpoint /metrics."
   },
   {
    "id": 2,
@@ -152,7 +152,7 @@
        }
       }
      ],
-     "noValue": "Chua deploy /metrics"
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
     },
     "overrides": []
    },
@@ -225,7 +225,7 @@
        }
       }
      ],
-     "noValue": "Chua deploy /metrics"
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
     },
     "overrides": []
    },
@@ -279,7 +279,7 @@
        }
       ]
      },
-     "noValue": "Chua deploy /metrics"
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
     },
     "overrides": []
    },
@@ -333,7 +333,7 @@
        }
       ]
      },
-     "noValue": "Chua deploy /metrics"
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
     },
     "overrides": []
    },
@@ -388,7 +388,7 @@
        }
       ]
      },
-     "noValue": "Chua deploy /metrics",
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
      "decimals": 1
     },
     "overrides": []
@@ -446,7 +446,7 @@
    },
    "fieldConfig": {
     "defaults": {
-     "noValue": "Chua deploy /metrics",
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
      "custom": {
       "lineWidth": 1,
       "fillOpacity": 12,
@@ -497,7 +497,7 @@
    },
    "fieldConfig": {
     "defaults": {
-     "noValue": "Chua deploy /metrics",
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
      "custom": {
       "lineWidth": 1,
       "fillOpacity": 60,
@@ -540,7 +540,8 @@
      },
      "expr": "pbx_gateway_state",
      "instant": true,
-     "range": false
+     "range": false,
+     "format": "table"
     }
    ],
    "gridPos": {
@@ -551,7 +552,7 @@
    },
    "fieldConfig": {
     "defaults": {
-     "noValue": "Chua co su kien gateway_state (hoac chua deploy /metrics)"
+     "noValue": "Chua co du lieu gateway (chua co su kien gateway_state)"
     },
     "overrides": []
    },
@@ -603,7 +604,7 @@
    },
    "fieldConfig": {
     "defaults": {
-     "noValue": "Chua deploy /metrics",
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
      "custom": {
       "lineWidth": 1,
       "fillOpacity": 12,
@@ -655,7 +656,7 @@
    "fieldConfig": {
     "defaults": {
      "unit": "pps",
-     "noValue": "Chua deploy /metrics",
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
      "custom": {
       "lineWidth": 1,
       "fillOpacity": 12,
@@ -717,7 +718,7 @@
    },
    "fieldConfig": {
     "defaults": {
-     "noValue": "Chua deploy /metrics",
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
      "custom": {
       "lineWidth": 1,
       "fillOpacity": 12,

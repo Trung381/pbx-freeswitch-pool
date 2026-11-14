@@ -36,6 +36,8 @@ def target(ds, expr=None, legend=None, sql=None, fmt=None, ref="A", instant=Fals
             t["legendFormat"] = legend
     else:
         t.update({"expr": expr, "instant": instant, "range": not instant})
+        if fmt:
+            t["format"] = fmt
         if legend:
             t["legendFormat"] = legend
     return t
@@ -127,7 +129,9 @@ def infra():
                   desc="Warning >= 80%, critical >= 90%."))
     P.append(stat("Load 1m", [target(PROM, 'node_load1')], 16, 1, thresholds=steps((None, C_OK), (2, C_WARN), (4, C_BAD)), decimals=2,
                   desc="VPS co 2 vCPU: load > 2 la bao hoa."))
-    P.append(stat("Uptime", [target(PROM, 'time() - node_boot_time_seconds')], 20, 1, unit="s", thresholds=steps((None, C_INFO))))
+    # node_boot_time_seconds thuoc collector `stat` (can --collector.stat trong node-exporter).
+    P.append(stat("Uptime", [target(PROM, 'time() - node_boot_time_seconds')], 20, 1, unit="s", thresholds=steps((None, C_INFO)),
+                  desc="Thoi gian host chay ke tu lan boot cuoi (node_boot_time_seconds, collector stat)."))
     P.append(ts("CPU theo mode", [target(PROM, 'sum by (mode) (rate(node_cpu_seconds_total{mode!="idle"}[$__rate_interval])) * 100', "{{mode}}")],
                 0, 5, unit="percent", custom={"stacking": {"mode": "normal"}}))
     P.append(ts("Bo nho", [target(PROM, 'node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes', "da dung"),
@@ -154,11 +158,13 @@ def infra():
     P.append(ts("Mang theo container (rx)", [target(PROM, f'sum by (name) (rate(container_network_receive_bytes_total{{{CN}}}[$__rate_interval]))', "{{name}}")],
                 0, 38, unit="Bps"))
     P.append(table("Container: uptime va so lan restart (1h)", [
-        target(PROM, f'time() - container_start_time_seconds{{{CN}}}', instant=True, ref="A"),
-        target(PROM, f'changes(container_start_time_seconds{{{CN}}}[1h])', instant=True, ref="B")],
+        # format=table: moi hang la 1 container (cot name) de joinByField hoat dong; max by (name) bo cac label cAdvisor thua.
+        target(PROM, f'max by (name) (time() - container_start_time_seconds{{{CN}}})', instant=True, ref="A", fmt="table"),
+        target(PROM, f'max by (name) (changes(container_start_time_seconds{{{CN}}}[1h]))', instant=True, ref="B", fmt="table")],
         12, 38, overrides=[], desc="Cot Value #A = uptime (giay), Value #B = so lan khoi dong lai trong 1 gio."))
     P[-1]["transformations"] = [{"id": "joinByField", "options": {"byField": "name", "mode": "outer"}},
                                 {"id": "organize", "options": {"excludeByName": {"Time": True, "Time 1": True, "Time 2": True},
+                                                               "indexByName": {"name": 0, "Value #A": 1, "Value #B": 2},
                                                                "renameByName": {"Value #A": "uptime (s)", "Value #B": "restart/1h"}}}]
     return dashboard("pbx-infra", "PBX - Ha tang (host + container)", P, ["infra"])
 
@@ -242,18 +248,18 @@ def cdr():
                 0, 39, w=12, no_value="Chua co du lieu HEP", custom={"drawStyle": "bars", "fillOpacity": 70}))
     P.append(table("SIP response / method", [target(PG, fmt="table", sql="SELECT COALESCE(NULLIF(sip_first_resp,''), sip_first_method) AS sip, sip_first_resp_text, count(*) AS n FROM hep_packets WHERE $__timeFilter(hep_timestamp) GROUP BY 1,2 ORDER BY 3 DESC LIMIT 25")],
                    12, 39, w=12, no_value="Chua co du lieu HEP"))
-    return dashboard("pbx-cdr", "PBX - Bao cao cuoc goi (CDR/HEP)", P, ["cdr", "report"], refresh="5m", time_from="now-7d")
+    return dashboard("pbx-cdr", "PBX - Bao cao cuoc goi (CDR/HEP)", P, ["cdr", "report"], refresh="5m", time_from="now-90d")
 
 
 # ---------------------------------------------------------------- (d) PBX health
 def health():
     _id[0] = 0
-    NV = "Chua deploy /metrics"
+    NV = "Chua co du lieu (chua co cuoc goi/su kien)"
     onoff = [{"type": "value", "options": {"0": {"text": "MAT KET NOI", "color": C_BAD}, "1": {"text": "OK", "color": C_OK}}}]
     P = []
     P.append(stat("custompbx /metrics", [target(PROM, 'up{job="custompbx"}')], 0, 0, mappings=[{"type": "value", "options": {"0": {"text": "DOWN", "color": C_BAD}, "1": {"text": "UP", "color": C_OK}}}],
                   no_value=NV, thresholds=steps((None, C_BAD), (1, C_OK)),
-                  desc="DOWN cho den khi custompbx duoc build/deploy lai voi endpoint /metrics (cong 9102, noi bo docker)."))
+                  desc="Prometheus scrape custompbx qua cong 9102 (noi bo docker, khong publish). DOWN = custompbx chet hoac chua co endpoint /metrics."))
     P.append(stat("ESL -> FreeSWITCH", [target(PROM, 'pbx_esl_connected')], 4, 0, mappings=onoff, no_value=NV, thresholds=steps((None, C_BAD), (1, C_OK))))
     P.append(stat("Database", [target(PROM, 'pbx_database_connected')], 8, 0, mappings=onoff, no_value=NV, thresholds=steps((None, C_BAD), (1, C_OK))))
     P.append(stat("Cuoc goi dang dien ra", [target(PROM, 'pbx_calls_active')], 12, 0, no_value=NV, thresholds=steps((None, C_INFO))))
@@ -262,7 +268,7 @@ def health():
     P.append(ts("Cuoc goi dang dien ra", [target(PROM, 'pbx_calls_active', "answered"), target(PROM, 'pbx_channels', "channels", ref="B")], 0, 4, no_value=NV))
     P.append(ts("Cuoc goi ket thuc theo hangup cause (/phut)", [target(PROM, 'sum by (hangup_cause) (increase(pbx_calls_total[$__rate_interval])) * 60 / $__interval_ms * 1000', "{{hangup_cause}}")],
                 12, 4, no_value=NV, custom={"drawStyle": "bars", "fillOpacity": 60, "stacking": {"mode": "normal"}}))
-    P.append(table("Trang thai gateway/trunk", [target(PROM, 'pbx_gateway_state', instant=True, fmt=None)], 0, 12, w=12, no_value="Chua co su kien gateway_state (hoac chua deploy /metrics)",
+    P.append(table("Trang thai gateway/trunk", [target(PROM, 'pbx_gateway_state', instant=True, fmt="table")], 0, 12, w=12, no_value="Chua co du lieu gateway (chua co su kien gateway_state)",
                    desc="Trang thai lay tu su kien sofia::gateway_state ke tu luc custompbx khoi dong. REGED = da dang ky."))
     P[-1]["transformations"] = [{"id": "organize", "options": {"excludeByName": {"Time": True, "Value": True, "__name__": True, "instance": True, "job": True}}}]
     P.append(ts("ESL reconnect attempts", [target(PROM, 'increase(pbx_esl_reconnect_attempts_total[$__rate_interval])', "reconnect")], 12, 12, no_value=NV))

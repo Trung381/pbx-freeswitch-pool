@@ -403,7 +403,8 @@
     "colorMode": "value",
     "graphMode": "area",
     "textMode": "auto"
-   }
+   },
+   "description": "Thoi gian host chay ke tu lan boot cuoi (node_boot_time_seconds, collector stat)."
   },
   {
    "id": 8,
@@ -961,9 +962,10 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "time() - container_start_time_seconds{name=~\"freeswitch-host|custompbx-host|postgres-host|pbx-freeswitch-pool-minio-.*|pbx-obs.*|.*grafana.*|.*loki.*|.*prometheus.*|.*alloy.*|.*cadvisor.*|.*node-exporter.*\"}",
+     "expr": "max by (name) (time() - container_start_time_seconds{name=~\"freeswitch-host|custompbx-host|postgres-host|pbx-freeswitch-pool-minio-.*|pbx-obs.*|.*grafana.*|.*loki.*|.*prometheus.*|.*alloy.*|.*cadvisor.*|.*node-exporter.*\"})",
      "instant": true,
-     "range": false
+     "range": false,
+     "format": "table"
     },
     {
      "refId": "B",
@@ -971,9 +973,10 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "changes(container_start_time_seconds{name=~\"freeswitch-host|custompbx-host|postgres-host|pbx-freeswitch-pool-minio-.*|pbx-obs.*|.*grafana.*|.*loki.*|.*prometheus.*|.*alloy.*|.*cadvisor.*|.*node-exporter.*\"}[1h])",
+     "expr": "max by (name) (changes(container_start_time_seconds{name=~\"freeswitch-host|custompbx-host|postgres-host|pbx-freeswitch-pool-minio-.*|pbx-obs.*|.*grafana.*|.*loki.*|.*prometheus.*|.*alloy.*|.*cadvisor.*|.*node-exporter.*\"}[1h]))",
      "instant": true,
-     "range": false
+     "range": false,
+     "format": "table"
     }
    ],
    "gridPos": {
@@ -1005,6 +1008,11 @@
        "Time": true,
        "Time 1": true,
        "Time 2": true
+      },
+      "indexByName": {
+       "name": 0,
+       "Value #A": 1,
+       "Value #B": 2
       },
       "renameByName": {
        "Value #A": "uptime (s)",
