@@ -1,0 +1,12 @@
+modules:
+  http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+  tcp_connect:
+    prober: tcp
+    timeout: 8s
+    tcp:
+      preferred_ip_protocol: ip4

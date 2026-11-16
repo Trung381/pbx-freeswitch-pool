@@ -33,3 +33,16 @@ scrape_configs:
   # Se la DOWN cho den khi custompbx duoc build/deploy lai voi ma moi.
   - job_name: custompbx
     static_configs: [{targets: ['custompbx:9102']}]
+
+  # Giam sat tu ben ngoai: VPS nay kiem tra dich vu cua VPS con lai (khong can VPS thu 3).
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params: {module: [http_2xx]}
+    static_configs: [{targets: ['https://chat1.techxanh.com/']}]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

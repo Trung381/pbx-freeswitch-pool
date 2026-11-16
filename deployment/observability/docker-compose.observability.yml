@@ -74,6 +74,16 @@ services:
       timeout: 5s
       retries: 5
 
+  blackbox:
+    image: prom/blackbox-exporter:v0.26.0
+    restart: unless-stopped
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    mem_limit: 32m
+    cpus: 0.2
+    networks: [obs]
+
   node-exporter:
     <<: *common
     image: prom/node-exporter:v1.9.0

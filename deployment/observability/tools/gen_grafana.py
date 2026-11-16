@@ -309,6 +309,8 @@ def alerts():
              "lt", 10, "5m", "warning", "RAM kha dung chi con {{ $values.B }}%."),
         rule("pbx-infra-target-down", "Target giam sat ha tang DOWN", 'min(up{job=~"node|cadvisor|loki|prometheus|alloy"})',
              "lt", 1, "5m", "warning", "Mot target giam sat (node/cadvisor/loki/alloy) khong scrape duoc.", nodata="Alerting"),
+        rule("pbx-ext-chatwoot-down", "Chatwoot (chat1.techxanh.com) khong truy cap duoc", 'min(probe_success{job="blackbox-http"})',
+             "lt", 1, "3m", "critical", "VPS PBX khong goi duoc https://chat1.techxanh.com (Chatwoot) trong 3 phut.", nodata="OK"),
     ]
     cont = [
         rule("pbx-container-restart", "Container PBX restart", f'sum(changes(container_start_time_seconds{{name=~"{PBX_CONT}"}}[15m]))',
