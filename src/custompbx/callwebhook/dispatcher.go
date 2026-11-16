@@ -29,6 +29,7 @@ type Event struct {
 	Event             string `json:"event"`
 	PBXID             string `json:"pbx_id,omitempty"`
 	SIPDomain         string `json:"sip_domain,omitempty"`
+	InboxID           int64  `json:"inbox_id,omitempty"`
 	PBXCallID         string `json:"pbx_call_id"`
 	LinkedID          string `json:"linked_id,omitempty"`
 	LegUUID           string `json:"leg_uuid"`
@@ -48,14 +49,15 @@ type Event struct {
 }
 
 type Dispatcher struct {
-	url       string
-	secret    string
-	pbxID     string
-	sipDomain string
-	client    *http.Client
-	queue     chan Event
-	seenMu    sync.Mutex
-	seen      map[string]time.Time
+	url              string
+	secret           string
+	pbxID            string
+	sipDomain        string
+	inboxByExtension map[string]int64
+	client           *http.Client
+	queue            chan Event
+	seenMu           sync.Mutex
+	seen             map[string]time.Time
 }
 
 var (
@@ -80,13 +82,14 @@ func Start(config cfg.CallWebhook) {
 	}
 
 	dispatcher := &Dispatcher{
-		url:       strings.TrimSpace(config.URL),
-		secret:    config.Secret,
-		pbxID:     strings.TrimSpace(os.Getenv("PBX_CALL_WEBHOOK_PBX_ID")),
-		sipDomain: strings.TrimSpace(os.Getenv("PBX_CALL_WEBHOOK_SIP_DOMAIN")),
-		client:    &http.Client{Timeout: timeout},
-		queue:     make(chan Event, queueSize),
-		seen:      make(map[string]time.Time),
+		url:              strings.TrimSpace(config.URL),
+		secret:           config.Secret,
+		pbxID:            strings.TrimSpace(os.Getenv("PBX_CALL_WEBHOOK_PBX_ID")),
+		sipDomain:        strings.TrimSpace(os.Getenv("PBX_CALL_WEBHOOK_SIP_DOMAIN")),
+		inboxByExtension: parseInboxByExtension(os.Getenv("PBX_CALL_WEBHOOK_INBOX_BY_EXTENSION")),
+		client:           &http.Client{Timeout: timeout},
+		queue:            make(chan Event, queueSize),
+		seen:             make(map[string]time.Time),
 	}
 	activeMu.Lock()
 	active = dispatcher
@@ -105,11 +108,23 @@ func Publish(event Event) {
 	}
 
 	event = sanitize(event)
+	if event.Extension == "" {
+		event.Extension = extensionCandidate(event.FromNumber, event.ToNumber)
+	}
 	if event.PBXID == "" {
 		event.PBXID = dispatcher.pbxID
 	}
 	if event.SIPDomain == "" {
 		event.SIPDomain = dispatcher.sipDomain
+	}
+	if event.InboxID == 0 && event.Extension != "" {
+		event.InboxID = dispatcher.inboxByExtension[event.Extension]
+	}
+	// Older Chatwoot deployments do not consume inbox_id and resolve a phone
+	// inbox by sip_domain before trying the extension. Use a non-channel routing
+	// key for explicitly mapped extensions so they can fall through safely.
+	if event.InboxID > 0 {
+		event.SIPDomain = "inbox-" + strconv.FormatInt(event.InboxID, 10)
 	}
 	if event.LinkedID == "" {
 		event.LinkedID = event.PBXCallID
@@ -178,6 +193,8 @@ func (d *Dispatcher) deliver(ctx context.Context, event Event) error {
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return &unexpectedStatusError{status: response.Status}
 	}
+	log.Printf("Call webhook delivered event_id=%s event=%s extension=%s inbox_id=%d status=%s",
+		event.EventID, event.Event, event.Extension, event.InboxID, response.Status)
 	return nil
 }
 
@@ -228,6 +245,36 @@ func applyEnvironment(config cfg.CallWebhook) cfg.CallWebhook {
 		config.Secret = value
 	}
 	return config
+}
+
+func parseInboxByExtension(value string) map[string]int64 {
+	result := make(map[string]int64)
+	for _, entry := range strings.Split(value, ",") {
+		parts := strings.SplitN(strings.TrimSpace(entry), ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		extension := strings.TrimSpace(parts[0])
+		inboxID, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+		if extension == "" || err != nil || inboxID <= 0 {
+			continue
+		}
+		result[extension] = inboxID
+	}
+	return result
+}
+
+func extensionCandidate(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if len(value) < 2 || len(value) > 6 {
+			continue
+		}
+		if _, err := strconv.ParseUint(value, 10, 32); err == nil {
+			return value
+		}
+	}
+	return ""
 }
 
 type unexpectedStatusError struct{ status string }

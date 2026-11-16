@@ -94,3 +94,26 @@ func TestDispatcherDeduplicatesEventIDsWithinTTL(t *testing.T) {
 		t.Fatal("event should be accepted after the dedupe TTL")
 	}
 }
+
+func TestParseInboxByExtension(t *testing.T) {
+	t.Parallel()
+
+	got := parseInboxByExtension("1002:34, 1003:35, invalid, 1004:0")
+	if got["1002"] != 34 || got["1003"] != 35 {
+		t.Fatalf("mapping = %#v", got)
+	}
+	if _, exists := got["1004"]; exists {
+		t.Fatalf("invalid inbox ID was accepted: %#v", got)
+	}
+}
+
+func TestExtensionCandidate(t *testing.T) {
+	t.Parallel()
+
+	if got := extensionCandidate("0342387314", "1002"); got != "1002" {
+		t.Fatalf("extensionCandidate() = %q, want 1002", got)
+	}
+	if got := extensionCandidate("not-a-number", "0342387314"); got != "" {
+		t.Fatalf("extensionCandidate() = %q, want empty", got)
+	}
+}
