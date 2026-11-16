@@ -362,7 +362,7 @@ contactPoints:
         disableResolveMessage: false
         settings:
           bottoken: $__env{TELEGRAM_BOT_TOKEN}
-          chatid: $__env{TELEGRAM_CHAT_ID}
+          chatid: $__env{TELEGRAM_CHAT_ID}  # LUU Y: chat id am (group) bi YAML doc thanh so -> ghi thang chuoi "-123..." vao file tren server
           parse_mode: None
 """)
     with open(os.path.join(ALERT, "policies.yml"), "w") as f:

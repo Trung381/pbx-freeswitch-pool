@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"custompbx/cfg"
+	"custompbx/logx"
 )
 
 const (
@@ -60,6 +60,8 @@ type Dispatcher struct {
 	seen             map[string]time.Time
 }
 
+var logger = logx.Component("callwebhook")
+
 var (
 	active   *Dispatcher
 	activeMu sync.RWMutex
@@ -68,7 +70,7 @@ var (
 func Start(config cfg.CallWebhook) {
 	config = applyEnvironment(config)
 	if !config.Enabled || strings.TrimSpace(config.URL) == "" {
-		log.Println("Call webhook dispatcher disabled")
+		logger.Info("call webhook dispatcher disabled")
 		return
 	}
 
@@ -96,7 +98,7 @@ func Start(config cfg.CallWebhook) {
 	activeMu.Unlock()
 
 	go dispatcher.run()
-	log.Printf("Call webhook dispatcher enabled url=%s", dispatcher.url)
+	logger.Info("call webhook dispatcher enabled", "url", dispatcher.url)
 }
 
 func Publish(event Event) {
@@ -135,7 +137,7 @@ func Publish(event Event) {
 	select {
 	case dispatcher.queue <- event:
 	default:
-		log.Printf("Call webhook queue full; dropped event_id=%s event=%s", event.EventID, event.Event)
+		logger.Warn("call webhook queue full; event dropped", "event_id", event.EventID, "event", event.Event)
 	}
 }
 
@@ -166,7 +168,7 @@ func (d *Dispatcher) markEventSeen(eventID string, now time.Time) bool {
 func (d *Dispatcher) run() {
 	for event := range d.queue {
 		if err := d.deliver(context.Background(), event); err != nil {
-			log.Printf("Call webhook delivery failed event_id=%s event=%s error=%v", event.EventID, event.Event, err)
+			logger.Error("call webhook delivery failed", "event_id", event.EventID, "event", event.Event, "error", err)
 		}
 	}
 }
@@ -193,8 +195,8 @@ func (d *Dispatcher) deliver(ctx context.Context, event Event) error {
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return &unexpectedStatusError{status: response.Status}
 	}
-	log.Printf("Call webhook delivered event_id=%s event=%s extension=%s inbox_id=%d status=%s",
-		event.EventID, event.Event, event.Extension, event.InboxID, response.Status)
+	logger.Info("call webhook delivered", "event_id", event.EventID, "event", event.Event,
+		"extension", event.Extension, "inbox_id", event.InboxID, "status", response.Status)
 	return nil
 }
 
