@@ -322,7 +322,7 @@
       "type": "grafana-postgresql-datasource",
       "uid": "pbx-postgres"
      },
-     "rawSql": "SELECT max(start_stamp) AS last_call FROM cdr",
+     "rawSql": "SELECT extract(epoch FROM max(start_stamp)) * 1000 AS last_call FROM cdr",
      "format": "table",
      "rawQuery": true,
      "editorMode": "code"

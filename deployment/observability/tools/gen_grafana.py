@@ -161,7 +161,7 @@ def infra():
         # format=table: moi hang la 1 container (cot name) de joinByField hoat dong; max by (name) bo cac label cAdvisor thua.
         target(PROM, f'max by (name) (time() - container_start_time_seconds{{{CN}}})', instant=True, ref="A", fmt="table"),
         target(PROM, f'max by (name) (changes(container_start_time_seconds{{{CN}}}[1h]))', instant=True, ref="B", fmt="table")],
-        12, 38, overrides=[], desc="Cot Value #A = uptime (giay), Value #B = so lan khoi dong lai trong 1 gio."))
+        12, 38, h=13, overrides=[], desc="Cot Value #A = uptime (giay), Value #B = so lan khoi dong lai trong 1 gio."))
     P[-1]["transformations"] = [{"id": "joinByField", "options": {"byField": "name", "mode": "outer"}},
                                 {"id": "organize", "options": {"excludeByName": {"Time": True, "Time 1": True, "Time 2": True},
                                                                "indexByName": {"name": 0, "Value #A": 1, "Value #B": 2},
@@ -223,7 +223,7 @@ def cdr():
                   12, 0, w=4, unit="s", decimals=0, thresholds=steps((None, C_INFO))))
     P.append(stat("Tong thoi gian noi may", [target(PG, sql="SELECT COALESCE(sum(billsec),0) AS total_billsec FROM cdr WHERE $__timeFilter(start_stamp)", fmt="table")],
                   16, 0, w=4, unit="s", thresholds=steps((None, C_INFO))))
-    P.append(stat("Cuoc goi moi nhat", [target(PG, sql="SELECT max(start_stamp) AS last_call FROM cdr", fmt="table")],
+    P.append(stat("Cuoc goi moi nhat", [target(PG, sql="SELECT extract(epoch FROM max(start_stamp)) * 1000 AS last_call FROM cdr", fmt="table")],
                   20, 0, w=4, unit="dateTimeFromNow", thresholds=steps((None, C_INFO))))
     P.append(ts("So cuoc goi theo gio", [
         target(PG, sql="SELECT $__timeGroupAlias(start_stamp,'1h'), count(*) FILTER (WHERE billsec > 0) AS \"co tra loi\", count(*) FILTER (WHERE billsec = 0) AS \"khong tra loi\" FROM cdr WHERE $__timeFilter(start_stamp) GROUP BY 1 ORDER BY 1")],
