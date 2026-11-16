@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Masterminds/squirrel"
-	"log"
 	"strconv"
 	"time"
 )
@@ -62,7 +61,7 @@ func SetLogLine(logLine mainStruct.LogType) error {
 		`INSERT INTO freeswitch_logs(log_file, log_func, log_line, log_level, text_channel, user_data, body) VALUES($1, $2, $3, $4, $5, $6, $7);`,
 		logLine.LogFile, logLine.LogFunc, logLine.LogLine, logLine.LogLevel, logLine.TextChannel, logLine.UserData, logLine.Body)
 	if err != nil {
-		log.Printf("%+v", err.Error())
+		logger.Error("SetLogLine failed", "err", err)
 		return err
 	}
 	return nil
@@ -89,7 +88,7 @@ func SetLogLines(logLines []mainStruct.LogType, instanceId int64) error {
 	query = query[:len(query)-1]
 	_, err := db.Exec(query, values...)
 	if err != nil {
-		log.Printf("%+v", err.Error())
+		logger.Error("SetLogLines failed", "err", err)
 		return err
 	}
 	return nil
@@ -114,7 +113,7 @@ func GetLogs() ([]mainStruct.LogType, error) {
 
 	defer logs.Close()
 	if err != nil {
-		log.Printf("%+v", err.Error())
+		logger.Error("GetLogs failed", "err", err)
 		return nil, err
 	}
 	var logLines []mainStruct.LogType
@@ -122,7 +121,7 @@ func GetLogs() ([]mainStruct.LogType, error) {
 		logLine := mainStruct.LogType{}
 		err := logs.Scan(&logLine.Created, &logLine.LogFile, &logLine.LogFunc, &logLine.LogLine, &logLine.LogLevel, &logLine.TextChannel, &logLine.UserData, &logLine.Body)
 		if err != nil {
-			log.Println(err.Error())
+			logger.Error("GetLogs failed", "err", err)
 			continue
 		}
 		logLines = append(logLines, logLine)
@@ -135,7 +134,7 @@ func clearOldLogs() {
 		`DELETE from freeswitch_logs
                WHERE created < now() - INTERVAL '1 day'`)
 	if err != nil {
-		log.Printf("clearOldLogs ERROR: %+v", err.Error())
+		logger.Error("clearOldLogs failed", "err", err)
 	}
 }
 
@@ -175,7 +174,7 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 	operandsMap := map[string]bool{ConstEqual: true, ConstMore: true, ConstLess: true, ConstLike: true, ConstMoreOrEq: true, ConstLessOrEq: true, ConstNotEqual: true, ConstNotLike: true}
 	for _, filter := range filters {
 		if !operandsMap[filter.Operand] {
-			log.Println(filter.Operand)
+			logger.Warn("unsupported filter operand", "operand", filter.Operand)
 			continue
 		}
 		var found bool
@@ -226,12 +225,10 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 		queryBuilder = queryBuilder.OrderBy("created ASC")
 	}
 	query, args, _ := queryBuilder.ToSql()
-	log.Println(query)
-	log.Println(args)
-	log.Println(args)
+	logger.Debug("executing query", "query", query, "args_count", len(args))
 	logs, err := db.Query(query, args...)
 	if err != nil {
-		log.Println(err.Error())
+		logger.Error("GetList failed", "err", err)
 		return nil, errors.New("error on select")
 	}
 	defer logs.Close()
@@ -252,7 +249,7 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 		}
 		err := logs.Scan(rows...)
 		if err != nil {
-			log.Println(err.Error())
+			logger.Error("GetList failed", "err", err)
 			continue
 		}
 
@@ -298,7 +295,7 @@ func GetHEPList(limit, offset int, filters []mainStruct.Filter, order mainStruct
 	operandsMap := map[string]bool{ConstEqual: true, ConstMore: true, ConstLess: true, ConstLike: true, ConstMoreOrEq: true, ConstLessOrEq: true, ConstNotEqual: true, ConstNotLike: true}
 	for _, filter := range filters {
 		if !operandsMap[filter.Operand] {
-			log.Println(filter.Operand)
+			logger.Warn("unsupported filter operand", "operand", filter.Operand)
 			continue
 		}
 		var found bool
@@ -365,11 +362,10 @@ func GetHEPList(limit, offset int, filters []mainStruct.Filter, order mainStruct
 		queryBuilder = queryBuilder.OrderBy("hep_timestamp ASC")
 	}
 	query, args, _ := queryBuilder.ToSql()
-	log.Println(query)
-	log.Println(args)
+	logger.Debug("executing query", "query", query, "args_count", len(args))
 	logs, err := db.Query(query, args...)
 	if err != nil {
-		log.Println(err.Error())
+		logger.Error("GetHEPList failed", "err", err)
 		return nil, errors.New("error on select")
 	}
 	defer logs.Close()
@@ -393,7 +389,7 @@ func GetHEPList(limit, offset int, filters []mainStruct.Filter, order mainStruct
 		rows = append(rows, &str)
 		err := logs.Scan(rows...)
 		if err != nil {
-			log.Println(err.Error())
+			logger.Error("GetHEPList failed", "err", err)
 			continue
 		}
 

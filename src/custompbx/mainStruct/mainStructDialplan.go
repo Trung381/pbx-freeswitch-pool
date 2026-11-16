@@ -3,7 +3,6 @@ package mainStruct
 import (
 	"custompbx/xmlStruct"
 	"encoding/xml"
-	"log"
 	"sort"
 	"sync"
 )
@@ -692,7 +691,7 @@ func (c *Context) CacheFullXML() {
 	xmlDocument.Section = xmlSections
 	output, err := xml.MarshalIndent(xmlDocument, "", "  ")
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("CacheFullXML failed", "err", err)
 		/*		output = []byte(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 				<document type="freeswitch/xml">
 				  <section name="result">

@@ -2,9 +2,9 @@ package hepHandler
 
 import (
 	"custompbx/cfg"
+	"custompbx/promexp"
 	"fmt"
 	"github.com/custompbx/hepparser"
-	"log"
 	"net"
 	"time"
 )
@@ -13,28 +13,28 @@ const maxPktLen = 8192
 
 func StartHepListener(DBSaveHandler func(hep []*hepparser.HEP, instanceId int64) error, instanceId int64) {
 	if cfg.CustomPbx.Fs.HEPCollector.Host == "" || cfg.CustomPbx.Fs.HEPCollector.Port < 1024 || cfg.CustomPbx.Fs.HEPCollector.Port > 65535 {
-		log.Println("HEP collecting disabled")
+		logger.Info("HEP collecting disabled")
 		return
 	}
 
-	log.Println("HEP collecting")
+	logger.Info("HEP collecting started")
 	ua, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", cfg.CustomPbx.Fs.HEPCollector.Host, cfg.CustomPbx.Fs.HEPCollector.Port))
 	if err != nil {
-		log.Printf("%v", err)
+		logger.Error("StartHepListener failed", "err", err)
 		return
 	}
 
 	uc, err := net.ListenUDP("udp", ua)
 	if err != nil {
-		log.Printf("%v", err)
+		logger.Error("StartHepListener failed", "err", err)
 		return
 	}
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("Recovered in StartHepListener", r)
+			logger.Error("recovered panic in StartHepListener", "panic", fmt.Sprint(r))
 		}
-		log.Printf("stopping UDP listener on %s", uc.LocalAddr())
+		logger.Info("stopping UDP listener", "addr", uc.LocalAddr().String())
 		uc.Close()
 	}()
 
@@ -47,14 +47,13 @@ func StartHepListener(DBSaveHandler func(hep []*hepparser.HEP, instanceId int64)
 		n, err := uc.Read(buf)
 		if err != nil {
 			//if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
-			//	log.Printf("%v\n continue", err)
 			//	continue
 			//} else {
-			log.Printf("%v\n return", err)
+			logger.Error("HEP UDP read failed, listener stops", "err", err)
 			return
 			//}
 		} else if n > maxPktLen {
-			log.Printf("received too big packet with %d bytes", n)
+			logger.Warn("HEP packet too big", "bytes", n)
 			continue
 		}
 		go ParseAndSaveHEP(buf[:n], HEPChannel)
@@ -88,14 +87,16 @@ func HEPSaver(SaveHEPPackets func(hep []*hepparser.HEP, instanceId int64) error,
 func ParseAndSaveHEP(packet []byte, HEPChannel chan *hepparser.HEP) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("Recovered in ParseAndSaveHEP", r)
+			logger.Error("recovered panic in ParseAndSaveHEP", "panic", fmt.Sprint(r))
 		}
 	}()
 
 	hepPacket, err := hepparser.DecodeHEP(packet)
 	if err != nil {
-		log.Println(err)
+		promexp.ObserveHEP("decode_error")
+		logger.Error("ParseAndSaveHEP failed", "err", err)
 		return
 	}
+	promexp.ObserveHEP("received")
 	HEPChannel <- hepPacket
 }

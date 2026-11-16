@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	_ "github.com/lib/pq"
-	"log"
 )
 
 func InitDialplanDB() {
@@ -239,7 +238,7 @@ func SetConditionAntiAction(extensionId int64, application, data string) (int64,
 func GetDialplanSettings(dialplan *mainStruct.Dialplans, instanceId int64) {
 	contexts, err := db.Query(`SELECT name, value, enabled FROM dialplan_settings WHERE instance_id = $1;`, instanceId)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetDialplanSettings failed", "err", err)
 		return
 	}
 	defer contexts.Close()
@@ -249,7 +248,7 @@ func GetDialplanSettings(dialplan *mainStruct.Dialplans, instanceId int64) {
 		var enabled bool
 		err := contexts.Scan(&name, &value, &enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetDialplanSettings failed", "err", err)
 			return
 		}
 		if !enabled {
@@ -268,7 +267,7 @@ func GetDialplanSettings(dialplan *mainStruct.Dialplans, instanceId int64) {
 func GetContexts(dialplan *mainStruct.Dialplans, instanceId int64) {
 	contexts, err := db.Query(`SELECT id, name, enabled FROM dialplan_contexts WHERE instance_id = $1;`, instanceId)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetContexts failed", "err", err)
 		return
 	}
 	defer contexts.Close()
@@ -276,7 +275,7 @@ func GetContexts(dialplan *mainStruct.Dialplans, instanceId int64) {
 		var context mainStruct.Context
 		err := contexts.Scan(&context.Id, &context.Name, &context.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetContexts failed", "err", err)
 			return
 		}
 		context.Dialplan = dialplan
@@ -287,7 +286,7 @@ func GetContexts(dialplan *mainStruct.Dialplans, instanceId int64) {
 func GetContextExtensions(context *mainStruct.Context, dialplan *mainStruct.Dialplans) {
 	extens, err := db.Query(`SELECT id, name, continue, position, enabled FROM dialplan_extensions WHERE context_id = $1;`, context.Id)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetContextExtensions failed", "err", err)
 		return
 	}
 	defer extens.Close()
@@ -295,7 +294,7 @@ func GetContextExtensions(context *mainStruct.Context, dialplan *mainStruct.Dial
 		var extension mainStruct.Extension
 		err := extens.Scan(&extension.Id, &extension.Name, &extension.Continue, &extension.Position, &extension.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetContextExtensions failed", "err", err)
 			return
 		}
 		extension.Context = context
@@ -309,7 +308,7 @@ func GetExtensionConditions(extension *mainStruct.Extension, dialplan *mainStruc
        id, break, field, expression, hour, mday, mon, mweek, wday, position, date_time, time_of_day, year, minute, week, yday, minday, tz_offset, dst, regex, enabled
        FROM dialplan_conditions WHERE extension_id = $1;`, extension.Id)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetExtensionConditions failed", "err", err)
 		return
 	}
 
@@ -340,7 +339,7 @@ func GetExtensionConditions(extension *mainStruct.Extension, dialplan *mainStruc
 			&condition.Enabled,
 		)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetExtensionConditions failed", "err", err)
 			return
 		}
 		condition.Extension = extension
@@ -352,7 +351,7 @@ func GetExtensionConditions(extension *mainStruct.Extension, dialplan *mainStruc
 func GetConditionRegexes(condition *mainStruct.Condition, dialplan *mainStruct.Dialplans) {
 	regexes, err := db.Query(`SELECT id, field, expression, enabled FROM dialplan_regexes WHERE condition_id = $1;`, condition.Id)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetConditionRegexes failed", "err", err)
 		return
 	}
 	defer regexes.Close()
@@ -360,7 +359,7 @@ func GetConditionRegexes(condition *mainStruct.Condition, dialplan *mainStruct.D
 		var regex mainStruct.Regex
 		err := regexes.Scan(&regex.Id, &regex.Field, &regex.Expression, &regex.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetConditionRegexes failed", "err", err)
 			return
 		}
 		regex.Condition = condition
@@ -372,7 +371,7 @@ func GetConditionRegexes(condition *mainStruct.Condition, dialplan *mainStruct.D
 func GetConditionActions(condition *mainStruct.Condition, dialplan *mainStruct.Dialplans) {
 	actions, err := db.Query(`SELECT id, application, data, inline, position, enabled FROM dialplan_actions WHERE condition_id = $1;`, condition.Id)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetConditionActions failed", "err", err)
 		return
 	}
 	defer actions.Close()
@@ -380,7 +379,7 @@ func GetConditionActions(condition *mainStruct.Condition, dialplan *mainStruct.D
 		var action mainStruct.Action
 		err := actions.Scan(&action.Id, &action.Application, &action.Data, &action.Inline, &action.Position, &action.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetConditionActions failed", "err", err)
 			return
 		}
 		action.Condition = condition
@@ -392,7 +391,7 @@ func GetConditionActions(condition *mainStruct.Condition, dialplan *mainStruct.D
 func GetConditionAntiActions(condition *mainStruct.Condition, dialplan *mainStruct.Dialplans) {
 	antiActions, err := db.Query(`SELECT id, application, data, position, enabled FROM dialplan_antiactions WHERE condition_id = $1;`, condition.Id)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetConditionAntiActions failed", "err", err)
 		return
 	}
 	defer antiActions.Close()
@@ -400,7 +399,7 @@ func GetConditionAntiActions(condition *mainStruct.Condition, dialplan *mainStru
 		var antiAction mainStruct.AntiAction
 		err := antiActions.Scan(&antiAction.Id, &antiAction.Application, &antiAction.Data, &antiAction.Position, &antiAction.Enabled)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetConditionAntiActions failed", "err", err)
 			return
 		}
 		antiAction.Condition = condition
@@ -799,7 +798,7 @@ func SetDialplanSettings(dialplan *mainStruct.Dialplans, name, value string, ins
 		name, value, instanceId,
 	).Scan(&enabled)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("SetDialplanSettings failed", "err", err)
 		return errors.New("cant' update")
 	}
 	if !enabled {

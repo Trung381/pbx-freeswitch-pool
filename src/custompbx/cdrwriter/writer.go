@@ -7,9 +7,9 @@ package cdrwriter
 
 import (
 	"custompbx/db"
+	"custompbx/logx"
 	"custompbx/recordingstore"
 	"database/sql"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -76,7 +76,7 @@ WHERE NOT EXISTS (SELECT 1 FROM cdr WHERE uuid = $12::uuid)
 		record.uuid, record.blegUUID, record.accountCode, record.readCodec, record.writeCodec,
 		record.sipHangupDisposition, record.ani, record.recordStereo, record.recordPath, record.recordName, record.linkedID)
 	if err != nil {
-		log.Printf("CDR persistence failed uuid=%s: %v", record.uuid, err)
+		logx.WithCall(logger, record.uuid).Error("CDR persistence failed", "err", err)
 		return
 	}
 	if record.recordPath.Valid {

@@ -7,9 +7,9 @@ import (
 	"context"
 	"custompbx/callwebhook"
 	"custompbx/db"
+	"custompbx/logx"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"path"
@@ -102,7 +102,7 @@ func QueueUpload(callUUID, localPath string) {
 	}
 	if db.GetDB() != nil {
 		if _, err := db.GetDB().Exec(`UPDATE cdr SET recording_status = 'pending', recording_error = NULL WHERE uuid = $1::uuid`, callUUID); err != nil {
-			log.Printf("recording upload pending metadata update uuid=%s: %v", callUUID, err)
+			logx.WithCall(logger, callUUID).Error("recording upload pending metadata update failed", "err", err)
 			return
 		}
 	}
@@ -114,7 +114,7 @@ func QueueUpload(callUUID, localPath string) {
 // upload succeeding. Existing local recordings are intentionally migrated too.
 func Start() {
 	if !Enabled() {
-		log.Println("recording object storage is disabled; retaining local recordings")
+		logger.Info("recording object storage is disabled; retaining local recordings")
 		return
 	}
 	startOnce.Do(func() {
@@ -141,20 +141,20 @@ WHERE record_path IS NOT NULL
 ORDER BY end_stamp ASC
 LIMIT 100`)
 	if err != nil {
-		log.Printf("recording spool reconciliation query failed: %v", err)
+		logger.Error("recording spool reconciliation query failed", "err", err)
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var callUUID, localPath string
 		if err := rows.Scan(&callUUID, &localPath); err != nil {
-			log.Printf("recording spool reconciliation scan failed: %v", err)
+			logger.Error("recording spool reconciliation scan failed", "err", err)
 			continue
 		}
 		QueueUpload(callUUID, localPath)
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("recording spool reconciliation rows failed: %v", err)
+		logger.Error("recording spool reconciliation rows failed", "err", err)
 	}
 }
 
@@ -188,11 +188,11 @@ func upload(callUUID, localPath string) {
 		cancel()
 		if lastErr == nil {
 			if err = markUploaded(callUUID, key, fileInfo.Size()); err != nil {
-				log.Printf("recording upload metadata failed uuid=%s: %v", callUUID, err)
+				logx.WithCall(logger, callUUID).Error("recording upload metadata failed", "err", err)
 				return
 			}
 			if err = os.Remove(localPath); err != nil {
-				log.Printf("recording spool cleanup failed uuid=%s: %v", callUUID, err)
+				logx.WithCall(logger, callUUID).Error("recording spool cleanup failed", "err", err)
 			}
 			return
 		}
@@ -254,7 +254,7 @@ func markFailure(callUUID string, cause error) {
 UPDATE cdr SET recording_status = 'failed', recording_error = $2
 WHERE uuid = $1::uuid`, callUUID, truncateError(cause))
 	if err != nil {
-		log.Printf("recording upload failure metadata update uuid=%s: %v", callUUID, err)
+		logx.WithCall(logger, callUUID).Error("recording upload failure metadata update failed", "err", err)
 	}
 }
 

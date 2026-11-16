@@ -14,7 +14,6 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"log"
 	"net"
 	"path"
 	"strings"
@@ -174,7 +173,7 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 	operandsMap := map[string]bool{ConstEqual: true, ConstMore: true, ConstLess: true, ConstLike: true, ConstMoreOrEq: true, ConstLessOrEq: true, ConstNotEqual: true, ConstNotLike: true}
 	for _, filter := range filters {
 		if !operandsMap[filter.Operand] {
-			log.Println(filter.Operand)
+			logger.Warn("unsupported filter operand", "operand", filter.Operand)
 			continue
 		}
 		var found bool
@@ -229,18 +228,16 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 	}
 
 	query, args, _ := sql.ToSql()
-	log.Println(query)
-	log.Println(args)
-	log.Println(args)
+	logger.Debug("executing query", "query", query, "args_count", len(args))
 	cdrs, err := db.Query(context.Background(), query, args...)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("GetList failed", "err", err)
 		return nil, errors.New("error on select")
 	}
 	defer cdrs.Close()
 	/*colTypes, err := cdrs.ColumnTypes()
 	if err!= nil {
-		log.Printf("%+v", err)
+		logger.Error("GetList failed", "err", err)
 		return nil, errors.New("error on select")
 	}
 	var uuidToConvert []string
@@ -268,7 +265,7 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 		result := make(map[string]interface{})
 		res, err := cdrs.Values()
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetList failed", "err", err)
 			continue
 		}
 		for i, desc := range fieldDescriptions {
@@ -289,7 +286,7 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 				}
 				ress, err := uuid.FromBytes(re[:])
 				if err != nil {
-					log.Println(err)
+					logger.Error("GetList failed", "err", err)
 					result[string(desc.Name)] = nil
 					continue
 				}
@@ -308,7 +305,7 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 		}
 		/*err := cdrs.Scan(rows...)
 		if err != nil {
-			log.Printf("%+v", err)
+			logger.Error("GetList failed", "err", err)
 			continue
 		}*/
 		/*
@@ -320,10 +317,8 @@ func GetList(limit, offset int, filters []mainStruct.Filter, order mainStruct.Or
 				var v interface{}
 				var rawValue = *(val.(*interface{}))
 				b, ok := rawValue.([]byte)
-				log.Println(s, b)
 				if ok {
 					v = b
-					log.Println(v, err)
 				} else {
 					v = val
 				}

@@ -5,7 +5,7 @@ import (
 	"custompbx/mainStruct"
 	"custompbx/pbxcache"
 	"custompbx/webStruct"
-	"log"
+	"strings"
 )
 
 func GetGlobalVariables(data *webStruct.MessageData) webStruct.UserResponse {
@@ -30,9 +30,9 @@ func UpdateGlobalVariable(data *webStruct.MessageData) webStruct.UserResponse {
 
 	if variable.Type == "set" {
 		if variable.Name != data.Variable.Name {
-			log.Println(fsesl.SendBgapiCmd("global_setvar " + variable.Name + "="))
+			setGlobalVar(variable.Name, "")
 		}
-		log.Println(fsesl.SendBgapiCmd("global_setvar " + data.Variable.Name + "=" + data.Variable.Value))
+		setGlobalVar(data.Variable.Name, data.Variable.Value)
 	}
 
 	res, err := pbxcache.UpdateGlobalVariable(variable, data.Variable.Name, data.Variable.Value, data.Variable.Type)
@@ -64,9 +64,9 @@ func SwitchGlobalVariable(data *webStruct.MessageData) webStruct.UserResponse {
 	}
 	if variable.Type == "set" {
 		if data.Variable.Enabled {
-			log.Println(fsesl.SendBgapiCmd("global_setvar " + variable.Name + "=" + variable.Value))
+			setGlobalVar(variable.Name, variable.Value)
 		} else {
-			log.Println(fsesl.SendBgapiCmd("global_setvar " + variable.Name + "="))
+			setGlobalVar(variable.Name, "")
 		}
 	}
 
@@ -97,7 +97,7 @@ func AddGlobalVariable(data *webStruct.MessageData) webStruct.UserResponse {
 		return webStruct.UserResponse{Error: err.Error(), MessageType: data.Event}
 	}
 	if variable.Type == "set" {
-		log.Println(fsesl.SendBgapiCmd("global_setvar " + data.Variable.Name + "=" + data.Variable.Value))
+		setGlobalVar(data.Variable.Name, data.Variable.Value)
 	}
 	item := map[int64]*mainStruct.GlobalVariable{variable.Id: variable}
 	SaveGlobalVarsToFile(false)
@@ -124,7 +124,7 @@ func DelGlobalVariable(data *webStruct.MessageData) webStruct.UserResponse {
 	}
 	SaveGlobalVarsToFile(false)
 	if variable.Type == "set" {
-		log.Println(fsesl.SendBgapiCmd("global_setvar " + variable.Name + "="))
+		setGlobalVar(variable.Name, "")
 	}
 	return webStruct.UserResponse{MessageType: data.Event, Id: &res}
 }
@@ -162,4 +162,15 @@ func MoveGlobalVariable(data *webStruct.MessageData) webStruct.UserResponse {
 func SaveGlobalVarsToFile(withOs bool) {
 	body, path, fileName := pbxcache.GlobalVariablesDropToFile()
 	fsesl.SaveToFile(body, path, fileName, withOs)
+}
+
+// setGlobalVar sends global_setvar through bgapi and logs the outcome
+// (the variable value is deliberately not logged).
+func setGlobalVar(name, value string) {
+	response, err := fsesl.SendBgapiCmd("global_setvar " + name + "=" + value)
+	if err != nil {
+		logger.Error("global_setvar failed", "variable", name, "err", err)
+		return
+	}
+	logger.Debug("global_setvar sent", "variable", name, "response", strings.TrimSpace(response))
 }

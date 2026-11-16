@@ -6,7 +6,6 @@ import (
 	"custompbx/pbxcache"
 	"encoding/xml"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -209,7 +208,7 @@ func prepareDocument(document Document) []byte {
 func XmlToByte(value ...interface{}) ([]byte, bool) {
 	output, err := xml.MarshalIndent(value, "", "  ")
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("XmlToByte failed", "err", err)
 		return []byte{}, false
 	}
 	output = append(output, '\n')
@@ -237,7 +236,6 @@ func (section *Section) addResult(status string) {
 func huntActions(post map[string]string, context *mainStruct.Context, debugLog *DebugLog) ([]mainStruct.Action, string) {
 	extensionName := "ext"
 	extensions := context.Extensions.ExtensionsList()
-	//log.Printf("NUMBER OF extensions IS %d\n", len(extensions))
 
 	var result []mainStruct.Action
 	//change range to i++
@@ -277,7 +275,6 @@ func huntActions(post map[string]string, context *mainStruct.Context, debugLog *
 			}
 			stackedCondition = true
 			for actIndex := 0; actIndex < len(actions); actIndex++ {
-				//log.Printf("%+v - %+v - %+v - %+v", cond.Id, cond.Position, action.Id, action.Position)
 				actionData := actions[actIndex].Data
 				if len(matchedGroups) > 1 {
 					for i := 1; i < len(matchedGroups); i++ {
@@ -498,7 +495,7 @@ func getField(field string, post map[string]string) string {
 func checkField(expression, value string) (bool, []string) {
 	r, err := regexp.Compile(expression)
 	if err != nil {
-		log.Printf("[CONDITION] [ERROR] %+v \n", err)
+		logger.Error("condition regexp compile failed", "expression", expression, "err", err)
 		return false, []string{}
 	}
 

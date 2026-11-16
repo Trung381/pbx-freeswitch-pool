@@ -1,0 +1,792 @@
+{
+ "uid": "pbx-health",
+ "title": "PBX - Suc khoe he thong",
+ "tags": [
+  "pbx",
+  "health"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 1,
+ "editable": false,
+ "graphTooltip": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "templating": {
+  "list": []
+ },
+ "annotations": {
+  "list": []
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "stat",
+   "title": "custompbx /metrics",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "up{job=\"custompbx\"}",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#e03131",
+        "value": null
+       },
+       {
+        "color": "#2f9e44",
+        "value": 1
+       }
+      ]
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "DOWN",
+         "color": "#e03131"
+        },
+        "1": {
+         "text": "UP",
+         "color": "#2f9e44"
+        }
+       }
+      }
+     ],
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   },
+   "description": "Prometheus scrape custompbx qua cong 9102 (noi bo docker, khong publish). DOWN = custompbx chet hoac chua co endpoint /metrics."
+  },
+  {
+   "id": 2,
+   "type": "stat",
+   "title": "ESL -> FreeSWITCH",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "pbx_esl_connected",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "gridPos": {
+    "x": 4,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#e03131",
+        "value": null
+       },
+       {
+        "color": "#2f9e44",
+        "value": 1
+       }
+      ]
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "MAT KET NOI",
+         "color": "#e03131"
+        },
+        "1": {
+         "text": "OK",
+         "color": "#2f9e44"
+        }
+       }
+      }
+     ],
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "Database",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "pbx_database_connected",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#e03131",
+        "value": null
+       },
+       {
+        "color": "#2f9e44",
+        "value": 1
+       }
+      ]
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "MAT KET NOI",
+         "color": "#e03131"
+        },
+        "1": {
+         "text": "OK",
+         "color": "#2f9e44"
+        }
+       }
+      }
+     ],
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 4,
+   "type": "stat",
+   "title": "Cuoc goi dang dien ra",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "pbx_calls_active",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#1c7ed6",
+        "value": null
+       }
+      ]
+     },
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 5,
+   "type": "stat",
+   "title": "Channel dang theo doi",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "pbx_channels",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#1c7ed6",
+        "value": null
+       }
+      ]
+     },
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 6,
+   "type": "stat",
+   "title": "HEP packets/s",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(pbx_hep_packets_total{result=\"received\"}[$__rate_interval]))",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "gridPos": {
+    "x": 20,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "pps",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#1c7ed6",
+        "value": null
+       }
+      ]
+     },
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "Cuoc goi dang dien ra",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "pbx_calls_active",
+     "instant": false,
+     "range": true,
+     "legendFormat": "answered"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "pbx_channels",
+     "instant": false,
+     "range": true,
+     "legendFormat": "channels"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 12,
+      "showPoints": "never",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 8,
+   "type": "timeseries",
+   "title": "Cuoc goi ket thuc theo hangup cause (/phut)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (hangup_cause) (increase(pbx_calls_total[$__rate_interval])) * 60 / $__interval_ms * 1000",
+     "instant": false,
+     "range": true,
+     "legendFormat": "{{hangup_cause}}"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 60,
+      "showPoints": "never",
+      "spanNulls": true,
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 9,
+   "type": "table",
+   "title": "Trang thai gateway/trunk",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "pbx_gateway_state",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "Chua co du lieu gateway (chua co su kien gateway_state)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   },
+   "description": "Trang thai lay tu su kien sofia::gateway_state ke tu luc custompbx khoi dong. REGED = da dang ky.",
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "Value": true,
+       "__name__": true,
+       "instance": true,
+       "job": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": 10,
+   "type": "timeseries",
+   "title": "ESL reconnect attempts",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "increase(pbx_esl_reconnect_attempts_total[$__rate_interval])",
+     "instant": false,
+     "range": true,
+     "legendFormat": "reconnect"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 12,
+      "showPoints": "never",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 11,
+   "type": "timeseries",
+   "title": "HEP packets/s",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (result) (rate(pbx_hep_packets_total[$__rate_interval]))",
+     "instant": false,
+     "range": true,
+     "legendFormat": "{{result}}"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "pps",
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 12,
+      "showPoints": "never",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 12,
+   "type": "timeseries",
+   "title": "custompbx: RAM (RSS) / goroutines",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "process_resident_memory_bytes{job=\"custompbx\"}",
+     "instant": false,
+     "range": true,
+     "legendFormat": "RSS"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "go_goroutines{job=\"custompbx\"}",
+     "instant": false,
+     "range": true,
+     "legendFormat": "goroutines"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "Chua co du lieu (chua co cuoc goi/su kien)",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 12,
+      "showPoints": "never",
+      "spanNulls": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "RSS"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "bytes"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 13,
+   "type": "logs",
+   "title": "custompbx - log loi",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{container=\"custompbx-host\", level=\"ERROR\"}",
+     "queryType": "range"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 28,
+    "w": 24,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending"
+   }
+  }
+ ]
+}

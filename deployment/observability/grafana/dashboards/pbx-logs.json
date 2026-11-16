@@ -1,0 +1,441 @@
+{
+ "uid": "pbx-logs",
+ "title": "PBX - Log explorer",
+ "tags": [
+  "pbx",
+  "logs"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 1,
+ "editable": false,
+ "graphTooltip": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-3h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "container",
+    "label": "Container",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": {
+     "label": "container",
+     "type": 1,
+     "refId": "c"
+    },
+    "includeAll": true,
+    "allValue": ".+",
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2
+   },
+   {
+    "name": "level",
+    "label": "Level",
+    "type": "custom",
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": true,
+    "query": "ERROR,WARNING,ERR,CRIT,ALERT,NOTICE,INFO,DEBUG",
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    }
+   },
+   {
+    "name": "component",
+    "label": "Component (custompbx)",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": {
+     "label": "component",
+     "type": 1,
+     "refId": "comp"
+    },
+    "includeAll": true,
+    "allValue": ".*",
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2
+   },
+   {
+    "name": "call_uuid",
+    "label": "Call UUID (trace cuoc goi)",
+    "type": "textbox",
+    "query": ".+",
+    "current": {
+     "text": ".+",
+     "value": ".+"
+    }
+   },
+   {
+    "name": "search",
+    "label": "Tim kiem (regex)",
+    "type": "textbox",
+    "query": "",
+    "current": {
+     "text": "",
+     "value": ""
+    }
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "timeseries",
+   "title": "Luong log theo container",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (container) (count_over_time({container=~\"$container\"}[$__interval]))",
+     "queryType": "range",
+     "legendFormat": "{{container}}"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 6
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 60,
+      "showPoints": "never",
+      "spanNulls": true,
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "type": "timeseries",
+   "title": "Loi / canh bao theo container",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (container, level) (count_over_time({container=~\"$container\", level=~\"ERROR|ERR|CRIT|ALERT|WARNING\"}[$__interval]))",
+     "queryType": "range",
+     "legendFormat": "{{container}} {{level}}"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 6
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 60,
+      "showPoints": "never",
+      "spanNulls": true,
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "Log custompbx theo component / level",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (component, level) (count_over_time({container=\"custompbx-host\", component=~\"$component\"}[$__interval]))",
+     "queryType": "range",
+     "legendFormat": "{{component}} {{level}}"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 6,
+    "w": 24,
+    "h": 6
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 60,
+      "showPoints": "never",
+      "spanNulls": true,
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 4,
+   "type": "logs",
+   "title": "Log",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{container=~\"$container\", level=~\"$level\", component=~\"$component\"} |~ \"(?i)$search\"",
+     "queryType": "range"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 24,
+    "h": 14
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "enableLogDetails": true,
+    "sortOrder": "Descending",
+    "dedupStrategy": "none"
+   }
+  },
+  {
+   "id": 5,
+   "type": "logs",
+   "title": "Trace theo call_uuid (custompbx + FreeSWITCH)",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{source=~\"stdout|file\"} | call_uuid=~\"$call_uuid\"",
+     "queryType": "range"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 26,
+    "w": 24,
+    "h": 12
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "enableLogDetails": true,
+    "sortOrder": "Ascending"
+   }
+  },
+  {
+   "id": 6,
+   "type": "logs",
+   "title": "FreeSWITCH (file) - chi WARNING/ERR/CRIT",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{job=\"freeswitch\", level=~\"WARNING|ERR|CRIT|ALERT\"}",
+     "queryType": "range"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 38,
+    "w": 24,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending"
+   }
+  },
+  {
+   "id": 7,
+   "type": "logs",
+   "title": "custompbx - loi",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{container=\"custompbx-host\", level=\"ERROR\"}",
+     "queryType": "range"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 48,
+    "w": 12,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending"
+   }
+  },
+  {
+   "id": 8,
+   "type": "logs",
+   "title": "postgres - loi / canh bao",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{container=\"postgres-host\"} |~ \"(?i)error|fatal|warning|panic\"",
+     "queryType": "range"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 48,
+    "w": 12,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending"
+   }
+  }
+ ]
+}

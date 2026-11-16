@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"github.com/custompbx/customorm"
 	"golang.org/x/crypto/bcrypt"
-	"log"
 	"math/rand"
 	"regexp"
 	"time"
@@ -119,7 +118,7 @@ func loginOut(data *webStruct.MessageData) webStruct.UserResponse {
 func findUser(data *webStruct.MessageData) (*mainStruct.WebUser, webStruct.UserResponse) {
 	user, err := webcache.GetWebUserByToken(data.Token)
 	if err != nil || user == nil || user.Login == "" {
-		log.Println("EVENT: ", data.Event, "NO USER BY TOKEN")
+		logger.Warn("websocket request rejected: no user by token", "event", data.Event)
 		if data.Context != nil {
 			data.Context.Subscriptions.Clear()
 		}
@@ -130,7 +129,7 @@ func findUser(data *webStruct.MessageData) (*mainStruct.WebUser, webStruct.UserR
 		data.Context.SetUser(user)
 	}
 	if user.Id != data.Context.User.Id {
-		log.Println("EVENT: ", data.Event, "USER: ", user.Login, " ACCESS DENIED! User changed in a single ws connection without logout")
+		logger.Warn("websocket access denied: user changed without logout", "event", data.Event, "user", user.Login)
 		noToken := true
 		return nil, webStruct.UserResponse{Daemon: daemonCache.State, MessageType: "connection", NoToken: &noToken}
 	}
@@ -139,15 +138,15 @@ func findUser(data *webStruct.MessageData) (*mainStruct.WebUser, webStruct.UserR
 
 func checkAccessGroup(data *webStruct.MessageData, groupList []int) *webStruct.UserResponse {
 	if data.Context.User == nil {
-		log.Println("EVENT: ", data.Event, "no user!")
+		logger.Warn("websocket request rejected: no user", "event", data.Event)
 		resp := noAccessResponse()
 		return &resp
 	}
 	user := data.Context.User
 	group := mainStruct.GetWebUserGroup(user.GroupId)
 	if !group.ValidateGroupAccess(groupList) {
-		log.Println("GROUP: ", user.GroupId, group, user.GroupId)
-		log.Println("EVENT: ", data.Event, "USER: ", user.Login, " ACCESS DENIED!")
+		logger.Debug("websocket group check", "user_group_id", user.GroupId, "group", group)
+		logger.Warn("websocket access denied", "event", data.Event, "user", user.Login)
 		resp := noAccessResponse()
 		return &resp
 	}
@@ -157,10 +156,10 @@ func checkAccessGroup(data *webStruct.MessageData, groupList []int) *webStruct.U
 
 func subscribeUser(data *webStruct.MessageData) *webStruct.UserResponse {
 	if data.Context.User == nil {
-		log.Println("EVENT: ", data.Event, "no user!")
+		logger.Warn("websocket request rejected: no user", "event", data.Event)
 		return &webStruct.UserResponse{Daemon: daemonCache.State, MessageType: "no_access"}
 	}
-	log.Println("EVENT: ", data.Event, "USER: ", data.Context.User.Login)
+	logger.Debug("websocket event", "event", data.Event, "user", data.Context.User.Login)
 	if data.KeepSubscription != nil && *data.KeepSubscription {
 		data.Context.Subscriptions.Set(data.Event)
 	}
@@ -608,7 +607,7 @@ func AddWebDirectoryUsersTemplate(data *webStruct.MessageData) webStruct.UserRes
 
 	res, err := intermediateDB.InsertItem(&item)
 	if err != nil {
-		log.Println(err)
+		logger.Error("AddWebDirectoryUsersTemplate failed", "err", err)
 		return webStruct.UserResponse{Error: "can't get", MessageType: data.Event}
 	}
 	item.Id = res
@@ -659,7 +658,7 @@ func UpdateWebDirectoryUsersTemplate(data *webStruct.MessageData) webStruct.User
 	item := altStruct.WebDirectoryUsersTemplate{}
 	err := json.Unmarshal(data.Data, &item)
 	if err != nil {
-		log.Println(err)
+		logger.Error("UpdateWebDirectoryUsersTemplate failed", "err", err)
 		return webStruct.UserResponse{Error: "wrong data", MessageType: data.Event}
 	}
 	if item.Id == 0 {
@@ -686,7 +685,7 @@ func GetWebDirectoryUsersTemplateParameters(data *webStruct.MessageData) webStru
 		map[string]bool{"Parent": true},
 	)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetWebDirectoryUsersTemplateParameters failed", "err", err)
 		return webStruct.UserResponse{Error: "can't get", MessageType: data.Event}
 	}
 
@@ -705,7 +704,7 @@ func AddWebDirectoryUsersTemplateParameter(data *webStruct.MessageData) webStruc
 
 	res, err := intermediateDB.InsertItem(&item)
 	if err != nil {
-		log.Println(err)
+		logger.Error("AddWebDirectoryUsersTemplateParameter failed", "err", err)
 		return webStruct.UserResponse{Error: "can't add", MessageType: data.Event}
 	}
 	item.Id = res
@@ -782,7 +781,7 @@ func GetWebDirectoryUsersTemplateVariables(data *webStruct.MessageData) webStruc
 		map[string]bool{"Parent": true},
 	)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetWebDirectoryUsersTemplateVariables failed", "err", err)
 		return webStruct.UserResponse{Error: "can't get", MessageType: data.Event}
 	}
 
@@ -920,7 +919,7 @@ func GetWebDirectoryUsersTemplateForm(data *webStruct.MessageData) webStruct.Use
 			map[string]bool{"Domain": true},
 		)
 		if err != nil || res == nil {
-			log.Println(err)
+			logger.Error("GetWebDirectoryUsersTemplateForm failed", "err", err)
 			return webStruct.UserResponse{Error: "can't get", MessageType: data.Event}
 		}
 		_, ok = res[data.Id]
@@ -934,7 +933,7 @@ func GetWebDirectoryUsersTemplateForm(data *webStruct.MessageData) webStruct.Use
 		map[string]bool{"Parent": true, "Show": true},
 	)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetWebDirectoryUsersTemplateForm failed", "err", err)
 		return webStruct.UserResponse{Error: "can't get", MessageType: data.Event}
 	}
 	for _, it := range res {
@@ -960,7 +959,7 @@ func GetWebDirectoryUsersTemplateForm(data *webStruct.MessageData) webStruct.Use
 		map[string]bool{"Parent": true, "Show": true},
 	)
 	if err != nil {
-		log.Println(err)
+		logger.Error("GetWebDirectoryUsersTemplateForm failed", "err", err)
 		return webStruct.UserResponse{Error: "can't get", MessageType: data.Event}
 	}
 	for _, it := range res {
@@ -1020,7 +1019,7 @@ func CreateWebDirectoryUsersByTemplate(data *webStruct.MessageData) webStruct.Us
 		searchFields,
 	)
 	if err != nil || res == nil || len(res) == 0 {
-		log.Println(err)
+		logger.Error("CreateWebDirectoryUsersByTemplate failed", "err", err)
 		return webStruct.UserResponse{Error: "can't get", MessageType: data.Event}
 	}
 
@@ -1037,12 +1036,12 @@ func CreateWebDirectoryUsersByTemplate(data *webStruct.MessageData) webStruct.Us
 	// USER
 	newUserId, err := altData.SetDirectoryDomainUser(template.Domain.Id, item.Name, "", template.Cidr, "")
 	if err != nil {
-		log.Println(err)
+		logger.Error("CreateWebDirectoryUsersByTemplate failed", "err", err)
 		return webStruct.UserResponse{Error: "can't add", MessageType: data.Event}
 	}
 	_, err = intermediateDB.UpdateFunc(&altStruct.DirectoryDomainUser{Id: newUserId, Cache: uint(template.Cache)}, []string{"Cache"})
 	if err != nil {
-		log.Println(err)
+		logger.Error("CreateWebDirectoryUsersByTemplate failed", "err", err)
 	}
 	// PARAMS
 	tParams, err := intermediateDB.GetByValueAsMap(
@@ -1050,7 +1049,7 @@ func CreateWebDirectoryUsersByTemplate(data *webStruct.MessageData) webStruct.Us
 		map[string]bool{"Parent": true},
 	)
 	if err != nil {
-		log.Println(err)
+		logger.Error("CreateWebDirectoryUsersByTemplate failed", "err", err)
 		intermediateDB.DeleteById(&altStruct.DirectoryDomainUser{Id: newUserId})
 		return webStruct.UserResponse{Error: "error while adding", MessageType: data.Event}
 	}
@@ -1072,7 +1071,7 @@ func CreateWebDirectoryUsersByTemplate(data *webStruct.MessageData) webStruct.Us
 		}
 		_, err = intermediateDB.InsertItem(&altStruct.DirectoryDomainUserParameter{Parent: &altStruct.DirectoryDomainUser{Id: newUserId}, Name: param.Name, Value: value})
 		if err != nil {
-			log.Println(err)
+			logger.Error("CreateWebDirectoryUsersByTemplate failed", "err", err)
 			intermediateDB.DeleteById(&altStruct.DirectoryDomainUser{Id: newUserId})
 			return webStruct.UserResponse{Error: "can't add", MessageType: data.Event}
 		}
@@ -1081,7 +1080,7 @@ func CreateWebDirectoryUsersByTemplate(data *webStruct.MessageData) webStruct.Us
 	if len(param) == 0 {
 		_, err = intermediateDB.InsertItem(&altStruct.DirectoryDomainUserParameter{Parent: &altStruct.DirectoryDomainUser{Id: newUserId}, Name: "password", Value: RandStringBytes(10)})
 		if err != nil {
-			log.Println(err)
+			logger.Error("CreateWebDirectoryUsersByTemplate failed", "err", err)
 			intermediateDB.DeleteById(&altStruct.DirectoryDomainUser{Id: newUserId})
 			return webStruct.UserResponse{Error: "can't add", MessageType: data.Event}
 		}
@@ -1093,7 +1092,7 @@ func CreateWebDirectoryUsersByTemplate(data *webStruct.MessageData) webStruct.Us
 		map[string]bool{"Parent": true},
 	)
 	if err != nil {
-		log.Println(err)
+		logger.Error("CreateWebDirectoryUsersByTemplate failed", "err", err)
 		intermediateDB.DeleteById(&altStruct.DirectoryDomainUser{Id: newUserId})
 		return webStruct.UserResponse{Error: "error while adding", MessageType: data.Event}
 	}
@@ -1115,7 +1114,7 @@ func CreateWebDirectoryUsersByTemplate(data *webStruct.MessageData) webStruct.Us
 		}
 		_, err = intermediateDB.InsertItem(&altStruct.DirectoryDomainUserVariable{Parent: &altStruct.DirectoryDomainUser{Id: newUserId}, Name: variable.Name, Value: value})
 		if err != nil {
-			log.Println(err)
+			logger.Error("CreateWebDirectoryUsersByTemplate failed", "err", err)
 			intermediateDB.DeleteById(&altStruct.DirectoryDomainUser{Id: newUserId})
 			return webStruct.UserResponse{Error: "can't add", MessageType: data.Event}
 		}
@@ -1198,7 +1197,7 @@ WHERE ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $3 AND receiver_id 
 		mes := altStruct.ConversationPrivateMessage{Sender: &mainStruct.WebUser{}, Receiver: &mainStruct.WebUser{}}
 		err := r.Scan(&mes.Id, &mes.CreatedAt, &mes.Text, &mes.Sender.Id, &mes.Receiver.Id)
 		if err != nil {
-			log.Println(err.Error())
+			logger.Error("GetConversationPrivateMessages failed", "err", err)
 			continue
 		}
 		res = append(res, mes)
@@ -1262,7 +1261,7 @@ WHERE ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $3 AND receiver_id 
 		mes := altStruct.ConversationPrivateCall{Sender: &mainStruct.WebUser{}, Receiver: &mainStruct.WebUser{}}
 		err := r.Scan(&mes.Id, &mes.CreatedAt, &mes.Duration, &mes.Sender.Id, &mes.Receiver.Id)
 		if err != nil {
-			log.Println(err.Error())
+			logger.Error("GetConversationPrivateCalls failed", "err", err)
 			continue
 		}
 		res = append(res, mes)

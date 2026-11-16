@@ -1,0 +1,20 @@
+<configuration name="logfile.conf" description="File Logging">
+  <settings>
+    <param name="rotate-on-hup" value="true"/>
+  </settings>
+  <profiles>
+    <profile name="default">
+      <settings>
+        <!-- Xoay tai 20MB, giu 3 file (dev: dia chat). Khi co maximum-rotate, ten file khong co ngay. -->
+        <param name="rollover" value="20971520"/>
+        <param name="maximum-rotate" value="3"/>
+        <!-- Prefix call UUID o dau moi dong de Alloy parse. -->
+        <param name="uuid" value="true"/>
+      </settings>
+      <mappings>
+        <!-- Bo muc debug de tranh phinh log; console/info/notice/warning/err/crit/alert. -->
+        <map name="all" value="console,info,notice,warning,err,crit,alert"/>
+      </mappings>
+    </profile>
+  </profiles>
+</configuration>

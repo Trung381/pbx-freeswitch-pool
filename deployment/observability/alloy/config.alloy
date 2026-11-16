@@ -1,0 +1,133 @@
+// Grafana Alloy: thu log -> Loki.
+//  1) log stdout cua cac container PBX qua Docker API
+//  2) file log FreeSWITCH (/var/log/freeswitch/freeswitch.log)
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// ---------- Docker stdout ----------
+discovery.docker "pbx" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "30s"
+}
+
+discovery.relabel "pbx" {
+  targets = discovery.docker.pbx.targets
+
+  // Chi lay container thuoc stack PBX.
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(freeswitch-host|custompbx-host|postgres-host|pbx-freeswitch-pool-minio-[0-9]+)"
+    action        = "keep"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "pbx" {
+  host             = "unix:///var/run/docker.sock"
+  targets          = discovery.relabel.pbx.output
+  labels           = {job = "docker", source = "stdout"}
+  forward_to       = [loki.process.common.receiver]
+}
+
+// ---------- File log FreeSWITCH ----------
+local.file_match "freeswitch" {
+  path_targets = [{
+    __path__ = "/var/log/freeswitch/freeswitch.log",
+    job      = "freeswitch",
+    source   = "file",
+    service  = "freeswitch",
+    container = "freeswitch-host",
+  }]
+}
+
+loki.source.file "freeswitch" {
+  targets       = local.file_match.freeswitch.targets
+  forward_to    = [loki.process.freeswitch.receiver]
+  tail_from_end = false
+}
+
+// Dong log FreeSWITCH: [UUID ]2026-11-09 05:40:54.560579 96.77% [WARNING] sofia.c:6488 noi dung
+loki.process "freeswitch" {
+  stage.regex {
+    expression = "^(?:(?P<call_uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) )?(?P<ts>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+) (?P<idle>[\\d.]+)% \\[(?P<level>[A-Z]+)\\] (?P<src>\\S+) "
+  }
+  stage.timestamp {
+    source   = "ts"
+    format   = "2006-01-02 15:04:05.999999"
+    location = "UTC"
+  }
+  stage.labels {
+    values = {level = ""}
+  }
+  // call_uuid co cardinality cao: dua vao structured metadata, KHONG lam label.
+  stage.structured_metadata {
+    values = {call_uuid = ""}
+  }
+  forward_to = [loki.process.common.receiver]
+}
+
+// ---------- Xu ly chung ----------
+loki.process "common" {
+  // custompbx ghi log JSON (log/slog): {"time","level","msg","service","component","call_uuid",...}
+  // Dong JSON -> level + component la label (cardinality thap); call_uuid la structured metadata.
+  // Dong KHONG phai JSON (panic Go, thu vien in thang ra stderr...) roi xuong heuristic ben duoi.
+  stage.match {
+    selector = "{container=\"custompbx-host\"} |~ \"^\\\\{.*\\\"level\\\":\""
+    stage.json {
+      expressions = {
+        slog_time = "time",
+        level     = "level",
+        component = "component",
+        call_uuid = "call_uuid",
+      }
+    }
+    stage.timestamp {
+      source           = "slog_time"
+      format           = "RFC3339Nano"
+      fallback_formats = ["RFC3339"]
+    }
+    // debug|info|warn|error -> DEBUG|INFO|WARNING|ERROR (dong nhat voi level cua FreeSWITCH).
+    stage.template {
+      source   = "level"
+      template = "{{ if eq .Value \"warn\" }}WARNING{{ else }}{{ ToUpper .Value }}{{ end }}"
+    }
+    stage.labels {
+      values = {level = "", component = ""}
+    }
+    // call_uuid co cardinality cao: structured metadata, KHONG lam label.
+    stage.structured_metadata {
+      values = {call_uuid = ""}
+    }
+  }
+  // Fallback: log stdout khong co format co dinh (chi ap dung khi chua co level tu JSON).
+  stage.match {
+    selector = "{source=\"stdout\",level=\"\"} |~ \"(?i)(panic|fatal|\\\\[error\\\\]|\\\\berror\\\\b)\""
+    stage.static_labels {
+      values = {level = "ERROR"}
+    }
+  }
+  stage.match {
+    selector = "{source=\"stdout\",level=\"\"} |~ \"(?i)(\\\\[warn|\\\\bwarning\\\\b)\""
+    stage.static_labels {
+      values = {level = "WARNING"}
+    }
+  }
+  // Che gia tri nhay cam co dang key=value / key: value.
+  stage.replace {
+    expression = "(?i)((?:password|passwd|secret|token|authorization|api[_-]?key)[\"']?\\s*[:=]\\s*[\"']?)([^\\s\"',;&]+)"
+    replace    = "${1}***"
+  }
+  forward_to = [loki.write.default.receiver]
+}

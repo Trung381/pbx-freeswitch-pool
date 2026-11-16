@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/Masterminds/squirrel"
 	"github.com/custompbx/hepparser"
-	"log"
 	"strconv"
 )
 
@@ -235,14 +234,14 @@ func clearOldHEPs() {
 		`DELETE from hep_packets
                WHERE hep_timestamp < now() - INTERVAL '1 day';`)
 	if err != nil {
-		log.Printf("clearOldHEPLogs ERROR: %+v", err.Error())
+		logger.Error("clearOldHEPLogs failed", "err", err)
 	}
 }
 
 func SaveHEPPackets(packets []*hepparser.HEP, instanceId int64) error {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("Recovered in SaveHEPPackets", r)
+			logger.Error("recovered panic in SaveHEPPackets", "panic", fmt.Sprint(r))
 		}
 	}()
 
@@ -313,7 +312,7 @@ func SaveHEPPackets(packets []*hepparser.HEP, instanceId int64) error {
 	counterMultipiler := 0
 	for i, packet := range packets {
 		if packet == nil || packet.SIP == nil || packet.Timestamp.IsZero() {
-			log.Println("empty sip msg")
+			logger.Warn("empty SIP message skipped")
 			counterMultipiler++
 			continue
 		}
@@ -339,7 +338,7 @@ func SaveHEPPackets(packets []*hepparser.HEP, instanceId int64) error {
 	query = query[:len(query)-1]
 	_, err := db.Exec(query, values...)
 	if err != nil {
-		log.Printf("%+v", err.Error())
+		logger.Error("SaveHEPPackets failed", "err", err)
 		return err
 	}
 	return nil
@@ -372,11 +371,10 @@ func GetHEPDetailsList(callIds []string, instanceId int64) ([]map[string]*interf
 	queryBuilder = queryBuilder.OrderBy("hep_timestamp ASC")
 
 	query, args, _ := queryBuilder.ToSql()
-	log.Println(query)
-	log.Println(args)
+	logger.Debug("executing query", "query", query, "args_count", len(args))
 	logs, err := db.Query(query, args...)
 	if err != nil {
-		log.Println(err.Error())
+		logger.Error("GetHEPDetailsList failed", "err", err)
 		return nil, errors.New("error on select")
 	}
 	defer logs.Close()
@@ -393,7 +391,7 @@ func GetHEPDetailsList(callIds []string, instanceId int64) ([]map[string]*interf
 		}
 		err := logs.Scan(rows...)
 		if err != nil {
-			log.Println(err.Error())
+			logger.Error("GetHEPDetailsList failed", "err", err)
 			continue
 		}
 

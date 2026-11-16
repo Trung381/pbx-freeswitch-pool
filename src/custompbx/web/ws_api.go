@@ -3,7 +3,6 @@ package web
 import (
 	"custompbx/webStruct"
 	"encoding/json"
-	"log"
 	"net/http"
 )
 
@@ -51,6 +50,6 @@ func PostAPIRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = w.Write(res)
 	if err != nil {
-		log.Printf("%+v", err)
+		logger.Error("PostAPIRequest failed", "err", err)
 	}
 }

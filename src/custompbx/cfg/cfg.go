@@ -1,9 +1,9 @@
 package cfg
 
 import (
+	"custompbx/logx"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -153,7 +153,7 @@ func RD() (config GeneralCfg, err error) {
 	}
 	file, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Printf("Config file not found. Creating...\n")
+		logger.Warn("config file not found, creating")
 		config = createConfig()
 		config, err = WD(createConfig())
 		return config, err
@@ -180,16 +180,16 @@ func init() {
 	var err error
 	path, err := ConfigPath()
 	if err != nil {
-		log.Fatal(err)
+		logx.Fatal(logger, "cannot resolve config path", "err", err)
 	}
-	log.Println("Config file at " + path)
+	logger.Info("config file", "path", path)
 	CustomPbx, err = RD()
 	if err != nil {
-		fmt.Printf("ERROR: Could not read configuration file: "+configFile+", cause: %v\n", err.Error())
+		logger.Error("could not read configuration file", "file", configFile, "err", err)
 		os.Exit(1)
 	}
 	if err = CustomPbx.Web.NormalizeAndValidateOrigins(); err != nil {
-		log.Fatal(err)
+		logx.Fatal(logger, "invalid web origins configuration", "err", err)
 	}
 
 	if CustomPbx.XMLCurl.Route == "" || CustomPbx.XMLCurl.Route[:1] != "/" {

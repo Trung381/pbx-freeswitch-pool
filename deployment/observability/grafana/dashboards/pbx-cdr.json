@@ -1,0 +1,812 @@
+{
+ "uid": "pbx-cdr",
+ "title": "PBX - Bao cao cuoc goi (CDR/HEP)",
+ "tags": [
+  "pbx",
+  "cdr",
+  "report"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 1,
+ "editable": false,
+ "graphTooltip": 1,
+ "refresh": "5m",
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "templating": {
+  "list": []
+ },
+ "annotations": {
+  "list": []
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "stat",
+   "title": "Tong so cuoc goi",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT count(*) AS calls FROM cdr WHERE $__timeFilter(start_stamp)",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#1c7ed6",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 2,
+   "type": "stat",
+   "title": "Cuoc goi co tra loi",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT count(*) AS answered FROM cdr WHERE $__timeFilter(start_stamp) AND billsec > 0",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 4,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#2f9e44",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 3,
+   "type": "stat",
+   "title": "Ty le loi",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT COALESCE(100.0 * count(*) FILTER (WHERE hangup_cause NOT IN ('NORMAL_CLEARING','ORIGINATOR_CANCEL','USER_BUSY','NO_ANSWER','NO_USER_RESPONSE','CALL_REJECTED','NORMAL_UNSPECIFIED')) / NULLIF(count(*),0), 0) AS fail_pct FROM cdr WHERE $__timeFilter(start_stamp)",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#2f9e44",
+        "value": null
+       },
+       {
+        "color": "#f08c00",
+        "value": 20
+       },
+       {
+        "color": "#e03131",
+        "value": 50
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   },
+   "description": "Loi = hangup_cause khong thuoc nhom ket thuc binh thuong (NORMAL_CLEARING, ORIGINATOR_CANCEL, USER_BUSY, NO_ANSWER, NO_USER_RESPONSE, CALL_REJECTED, NORMAL_UNSPECIFIED)."
+  },
+  {
+   "id": 4,
+   "type": "stat",
+   "title": "Thoi luong TB (billsec)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT COALESCE(avg(billsec) FILTER (WHERE billsec > 0), 0) AS avg_billsec FROM cdr WHERE $__timeFilter(start_stamp)",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#1c7ed6",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 5,
+   "type": "stat",
+   "title": "Tong thoi gian noi may",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT COALESCE(sum(billsec),0) AS total_billsec FROM cdr WHERE $__timeFilter(start_stamp)",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#1c7ed6",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 6,
+   "type": "stat",
+   "title": "Cuoc goi moi nhat",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT max(start_stamp) AS last_call FROM cdr",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 20,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "dateTimeFromNow",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "#1c7ed6",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "auto"
+   }
+  },
+  {
+   "id": 7,
+   "type": "timeseries",
+   "title": "So cuoc goi theo gio",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT $__timeGroupAlias(start_stamp,'1h'), count(*) FILTER (WHERE billsec > 0) AS \"co tra loi\", count(*) FILTER (WHERE billsec = 0) AS \"khong tra loi\" FROM cdr WHERE $__timeFilter(start_stamp) GROUP BY 1 ORDER BY 1",
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 16,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "spanNulls": true,
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "co tra loi"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#2f9e44"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "khong tra loi"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#f08c00"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 8,
+   "type": "piechart",
+   "title": "Theo hangup cause",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT hangup_cause AS metric, count(*) AS value FROM cdr WHERE $__timeFilter(start_stamp) GROUP BY 1 ORDER BY 2 DESC",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 16,
+    "y": 4,
+    "w": 8,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "values": [
+      "value",
+      "percent"
+     ]
+    },
+    "pieType": "donut",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "/^value$/",
+     "values": true
+    }
+   }
+  },
+  {
+   "id": 9,
+   "type": "timeseries",
+   "title": "Ty le loi theo gio (%)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT $__timeGroupAlias(start_stamp,'1h'), 100.0 * count(*) FILTER (WHERE hangup_cause NOT IN ('NORMAL_CLEARING','ORIGINATOR_CANCEL','USER_BUSY','NO_ANSWER','NO_USER_RESPONSE','CALL_REJECTED','NORMAL_UNSPECIFIED')) / NULLIF(count(*),0) AS \"ty le loi\" FROM cdr WHERE $__timeFilter(start_stamp) GROUP BY 1 ORDER BY 1",
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 12,
+      "showPoints": "never",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 10,
+   "type": "timeseries",
+   "title": "Thoi luong TB theo gio (giay)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT $__timeGroupAlias(start_stamp,'1h'), avg(billsec) FILTER (WHERE billsec > 0) AS \"billsec TB\", avg(duration) AS \"duration TB\" FROM cdr WHERE $__timeFilter(start_stamp) GROUP BY 1 ORDER BY 1",
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 12,
+      "showPoints": "never",
+      "spanNulls": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 11,
+   "type": "table",
+   "title": "Hangup cause: so luong, ty le, thoi luong TB",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT hangup_cause, count(*) AS calls, round(100.0*count(*)/sum(count(*)) OVER (),1) AS pct, round(avg(billsec)) AS avg_billsec FROM cdr WHERE $__timeFilter(start_stamp) GROUP BY 1 ORDER BY 2 DESC",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   }
+  },
+  {
+   "id": 12,
+   "type": "table",
+   "title": "Top so goi di (caller)",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT caller_id_number, count(*) AS calls, sum(billsec) AS billsec FROM cdr WHERE $__timeFilter(start_stamp) GROUP BY 1 ORDER BY 2 DESC LIMIT 15",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   }
+  },
+  {
+   "id": 13,
+   "type": "table",
+   "title": "100 cuoc goi gan nhat",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT start_stamp, caller_id_number, destination_number, billsec, hangup_cause, sip_hangup_disposition, read_codec FROM cdr WHERE $__timeFilter(start_stamp) ORDER BY start_stamp DESC LIMIT 100",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 28,
+    "w": 24,
+    "h": 10
+   },
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   }
+  },
+  {
+   "id": 14,
+   "type": "row",
+   "title": "HEP / SIP (hep_packets) - trong neu chua bat HEP capture",
+   "collapsed": false,
+   "gridPos": {
+    "x": 0,
+    "y": 38,
+    "w": 24,
+    "h": 1
+   },
+   "panels": []
+  },
+  {
+   "id": 15,
+   "type": "timeseries",
+   "title": "SIP message theo gio",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT $__timeGroupAlias(hep_timestamp,'1h'), count(*) AS \"SIP messages\" FROM hep_packets WHERE $__timeFilter(hep_timestamp) GROUP BY 1 ORDER BY 1",
+     "format": "time_series",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 0,
+    "y": 39,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "Chua co du lieu HEP",
+     "custom": {
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "spanNulls": true,
+      "drawStyle": "bars"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": []
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": 16,
+   "type": "table",
+   "title": "SIP response / method",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "pbx-postgres"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "pbx-postgres"
+     },
+     "rawSql": "SELECT COALESCE(NULLIF(sip_first_resp,''), sip_first_method) AS sip, sip_first_resp_text, count(*) AS n FROM hep_packets WHERE $__timeFilter(hep_timestamp) GROUP BY 1,2 ORDER BY 3 DESC LIMIT 25",
+     "format": "table",
+     "rawQuery": true,
+     "editorMode": "code"
+    }
+   ],
+   "gridPos": {
+    "x": 12,
+    "y": 39,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "noValue": "Chua co du lieu HEP"
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   }
+  }
+ ]
+}
