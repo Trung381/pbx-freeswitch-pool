@@ -1,6 +1,7 @@
 volumes:
   freeswitch-recordings:
   minio-data:
+  postgres-data:
   fsdata:
     driver_opts:
       type: none
@@ -68,7 +69,7 @@ services:
       POSTGRES_PASSWORD: custompbx
       POSTGRES_DB: custompbx
     volumes:
-      - /var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - local_network
