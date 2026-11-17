@@ -11,6 +11,7 @@ name: pbx-observability
 volumes:
   loki-data:
   prometheus-data:
+  tempo-data:
   grafana-data:
   alloy-data:
   # Volume log FreeSWITCH do docker-compose.observability-fs-log.yml (compose chinh) tao.
@@ -52,6 +53,19 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+
+  # Tracing (OpenTelemetry). custompbx gui OTLP gRPC toi tempo:4317 qua local_network khi
+  # CUSTOMPBX_OTEL_ENDPOINT duoc dat. Khong publish port ra host.
+  tempo:
+    <<: *common
+    image: grafana/tempo:2.7.2
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    networks: [obs, local_network]   # local_network: nhan trace tu custompbx
+    mem_limit: 192m
+    cpus: 0.5
 
   prometheus:
     <<: *common
@@ -183,6 +197,7 @@ services:
     networks: [obs, local_network]   # local_network: doc Postgres (user chi doc)
     depends_on:
       loki: {condition: service_healthy}
+      tempo: {condition: service_started}
       prometheus: {condition: service_healthy}
     mem_limit: 256m
     cpus: 0.5

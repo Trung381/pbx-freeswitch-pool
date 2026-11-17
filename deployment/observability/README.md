@@ -1,7 +1,7 @@
 # Observability cho PBX-FREESWITCH-POOL
 
 Stack gon cho VPS RAM chat: **Grafana + Loki + Prometheus + Grafana Alloy + node_exporter + cAdvisor**.
-Moi du an 1 Grafana rieng. Khong co trace (khong Tempo/Mimir), alert dung Grafana Alerting (khong Alertmanager).
+Moi du an 1 Grafana rieng. Trace: Tempo (tuy chon, xem muc Tracing). Khong Mimir; alert dung Grafana Alerting (khong Alertmanager).
 Retention: log 5 ngay (`loki/loki.yml`), metrics 10 ngay / 1GB (`.env`).
 
 ## Thanh phan
@@ -11,6 +11,7 @@ Retention: log 5 ngay (`loki/loki.yml`), metrics 10 ngay / 1GB (`.env`).
 | `docker-compose.observability-fs-log.yml` | Override cho compose chinh: named volume log FreeSWITCH (thay volume an danh), xoay log 20MB x3 |
 | `fs_conf/logfile.conf.xml` | Cau hinh mod_logfile (xoay log, bo debug, prefix UUID) |
 | `alloy/config.alloy` | Thu log stdout 4 container + file log FreeSWITCH, parse `level`, `call_uuid`, che gia tri nhay cam |
+| `tempo/tempo.yml` | Tempo single-binary (OTLP 4317/4318), retention 72h |
 | `prometheus/prometheus.yml` | Scrape node, cadvisor, loki, alloy, grafana, custompbx:9102 |
 | `postgres/create-grafana-ro.sql` | User Postgres chi doc cho Grafana (chi cot can cho CDR/HEP) |
 | `grafana/provisioning/*` | Datasource, dashboard provider, alert rules, contact point Telegram |
@@ -77,3 +78,30 @@ Luu y: `dispatcher.go` (call webhook) van dung `log` chuan nen chuoi "Call webho
 - Dung luong: `docker system df`; Loki/Prometheus tu xoa theo retention.
 - Doi thoi gian giu log: sua `retention_period` trong `loki/loki.yml` roi `docker compose up -d loki`.
 - Rollback FreeSWITCH log: bo `-f ...fs-log.yml` va `up -d --no-deps freeswitch` (log cu o container layer se mat khi recreate; backup xem bao cao trien khai).
+
+## Tracing (Grafana Tempo + OpenTelemetry)
+Moi cuoc goi = 1 trace (trace id sinh co dinh tu `call_uuid`/linked_id, nen cac leg va ca sau khi restart van chung 1 trace). Span:
+`esl.channel_create`, `esl.channel_answer`, `esl.channel_hangup` (CHANNEL_DESTROY), `callwebhook.deliver` (con, kem client span
+HTTP `POST` va attribute `event_id`), `cdr.insert` (ghi CDR). Moi span co attribute `call_uuid`. Them server span cho web/websocket
+(`custompbx.web`). Chua co span `bridge` (custompbx chua subscribe CHANNEL_BRIDGE). XML-CURL khong trace (poll lien tuc, qua on).
+
+**Bat:**
+1. `cd deployment/observability && docker compose -f docker-compose.observability.yml --env-file .env up -d tempo grafana`
+   (tempo nam tren `local_network` nen custompbx goi duoc; khong publish port ra host).
+2. Trong `.env` cua compose chinh dat `CUSTOMPBX_OTEL_ENDPOINT=tempo:4317` (exporter OTLP/**gRPC**, dang `host:port`, khong co duong dan;
+   `http://tempo:4317` van duoc hieu la gRPC khong TLS, `https://` = TLS). Roi `docker compose up -d custompbx` (recreate).
+   Co the dung bien chuan `OTEL_EXPORTER_OTLP_ENDPOINT`. De trong = tat han, khong ton tai nguyen.
+3. Lay mau: `OTEL_TRACES_SAMPLER_ARG` (mac dinh `1.0`; vd `0.2` = 20% cuoc goi; quyet dinh theo trace id nen cung 1 cuoc goi luon
+   duoc giu hoac bo tron ven).  Dat trong `.env` cua compose chinh (da duoc truyen vao container).
+
+**Tim trace theo call_uuid:** Grafana > Explore > datasource **Tempo** > tab *TraceQL*:
+```
+{ span.call_uuid = "<call_uuid>" }
+```
+(call_uuid = `variable_linked_id`/`call_uuid` cua cuoc goi, cung gia tri voi truong `call_uuid` trong log; webhook: `pbx_call_id`).
+Trong trace, nut *Logs for this span* nhay sang Loki (loc theo trace id). Nguoc lai, o Explore > Loki, dong log custompbx co
+`trace_id` (log trong ngu canh span, vd "call webhook delivered", "CDR persistence failed") hien nut **Xem trace**.
+
+**RAM/dia:** Tempo `mem_limit 192m` (thuc te ~80-150MB luc nhan it trace), `cpus 0.5`, retention 72h tren volume `tempo-data`
+(vai chuc MB/ngay voi tai PBX nho). custompbx them ~vai MB (batch exporter, queue 1024 span). Khi tat tracing custompbx khong them gi.
+Neu RAM VPS cang: giam `OTEL_TRACES_SAMPLER_ARG` hoac dung `docker compose stop tempo` (custompbx se bo qua loi export, khong anh huong cuoc goi).

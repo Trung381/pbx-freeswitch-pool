@@ -136,6 +136,9 @@ services:
       # Quick-start only: replace the unusable stock FreeSWITCH CDR sample DSN
       # when it is imported unchanged. User-configured CDR databases are preserved.
       CUSTOMPBX_DEMO_CDR_BOOTSTRAP: "true"
+      # Tracing OTLP/gRPC (vd tempo:4317). De trong = tat hoan toan.
+      CUSTOMPBX_OTEL_ENDPOINT: ${CUSTOMPBX_OTEL_ENDPOINT:-}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
       PBX_CALL_WEBHOOK_URL: ${PBX_CALL_WEBHOOK_URL:-}
       PBX_CALL_WEBHOOK_SECRET: ${PBX_CALL_WEBHOOK_SECRET:-}
       PBX_CALL_WEBHOOK_PBX_ID: ${PBX_CALL_WEBHOOK_PBX_ID:-td1}

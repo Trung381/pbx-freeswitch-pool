@@ -1,0 +1,43 @@
+# Tempo single-binary, luu file system, retention 3 ngay (72h). Nhan OTLP gRPC 4317 + HTTP 4318.
+# Chi lang nghe trong docker network (khong publish ra host).
+stream_over_http_enabled: true
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: warn
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+ingester:
+  max_block_duration: 10m
+  lifecycler:
+    ring:
+      replication_factor: 1
+compactor:
+  compaction:
+    block_retention: 72h
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+    pool:
+      max_workers: 20
+      queue_depth: 200
+overrides:
+  defaults:
+    ingestion:
+      rate_limit_bytes: 2000000
+      burst_size_bytes: 4000000
+      max_traces_per_user: 5000
+    global:
+      max_bytes_per_trace: 1000000
+usage_report:
+  reporting_enabled: false
