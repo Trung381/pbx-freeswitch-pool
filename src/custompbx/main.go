@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -25,6 +26,7 @@ import (
 	"custompbx/promexp"
 	"custompbx/recordingapi"
 	"custompbx/recordingstore"
+	"custompbx/tracing"
 	"custompbx/web"
 	"custompbx/webcache"
 	"custompbx/xmlcurl"
@@ -35,6 +37,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/pion/turn/v4"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"image"
 	"image/gif"
 	"image/jpeg"
@@ -56,6 +59,14 @@ func main() {
 	logsChannel := make(chan mainStruct.LogType, 420)
 
 	logger.Info("CustomPBX starting", "version", mainStruct.Version)
+	if shutdownTracing, err := tracing.Setup(context.Background()); err != nil {
+		logger.Error("tracing setup failed; continuing without tracing", "err", err)
+	} else {
+		defer func() { _ = shutdownTracing(context.Background()) }()
+		if tracing.Enabled() {
+			logger.Info("tracing enabled", "endpoint", tracing.Endpoint(), "sampler_ratio", tracing.SamplerRatio())
+		}
+	}
 	callwebhook.Start(cfg.CustomPbx.CallWebhook)
 	daemonCache.InitDaemonState()
 	logger.Info("starting database")
@@ -156,7 +167,7 @@ func main() {
 	configureStaticRoutes(rWeb)
 
 	go turnServer()
-	startServers(rWeb, rCurl)
+	startServers(otelWrap(rWeb), rCurl)
 }
 
 func metricsListenAddr() string {
@@ -166,7 +177,17 @@ func metricsListenAddr() string {
 	return ":9102"
 }
 
-func startServers(r chi.Router, cr chi.Router) {
+// otelWrap adds server spans for the web/websocket entry point. It returns h
+// untouched when tracing is disabled.
+func otelWrap(h http.Handler) http.Handler {
+	if !tracing.Enabled() {
+		return h
+	}
+	return otelhttp.NewHandler(h, "custompbx.web",
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string { return r.Method + " " + r.URL.Path }))
+}
+
+func startServers(r http.Handler, cr chi.Router) {
 	curlCert, curlKey, webCert, webKey := checkAndCreateCerts()
 
 	if cfg.CustomPbx.XMLCurl.Secure {

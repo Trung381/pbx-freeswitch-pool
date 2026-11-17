@@ -2,12 +2,15 @@ package logx
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 func decode(t *testing.T, buf *bytes.Buffer) []map[string]any {
@@ -104,5 +107,26 @@ func TestStdLogBridge(t *testing.T) {
 	recs := decode(t, &buf)
 	if len(recs) != 1 || recs[0]["msg"] != "third party says hi" || recs[0]["component"] != "stdlog" || recs[0]["service"] != "custompbx" {
 		t.Fatalf("unexpected bridge output: %s", buf.String())
+	}
+}
+
+func TestHandlerInjectsTraceIDs(t *testing.T) {
+	var buf bytes.Buffer
+	l := slog.New(NewHandler(&buf, slog.LevelInfo))
+	tid, _ := trace.TraceIDFromHex("0123456789abcdef0123456789abcdef")
+	sid, _ := trace.SpanIDFromHex("0123456789abcdef")
+	ctx := trace.ContextWithSpanContext(context.Background(),
+		trace.NewSpanContext(trace.SpanContextConfig{TraceID: tid, SpanID: sid, TraceFlags: trace.FlagsSampled}))
+	l.InfoContext(ctx, "with span")
+	l.Info("without span")
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("lines=%d", len(lines))
+	}
+	if !strings.Contains(lines[0], `"trace_id":"0123456789abcdef0123456789abcdef"`) || !strings.Contains(lines[0], `"span_id":"0123456789abcdef"`) {
+		t.Errorf("missing ids: %s", lines[0])
+	}
+	if strings.Contains(lines[1], "trace_id") {
+		t.Errorf("unexpected ids: %s", lines[1])
 	}
 }

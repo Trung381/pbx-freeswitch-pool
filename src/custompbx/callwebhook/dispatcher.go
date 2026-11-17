@@ -17,6 +17,10 @@ import (
 
 	"custompbx/cfg"
 	"custompbx/logx"
+	"custompbx/tracing"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -46,6 +50,10 @@ type Event struct {
 	Duration          int64  `json:"duration,omitempty"`
 	HangupCause       string `json:"hangup_cause,omitempty"`
 	RecordingURL      string `json:"recording_url,omitempty"`
+
+	// TraceContext optionally carries the span of the producer so the async
+	// delivery becomes its child. Never serialised.
+	TraceContext context.Context `json:"-"`
 }
 
 type Dispatcher struct {
@@ -89,7 +97,7 @@ func Start(config cfg.CallWebhook) {
 		pbxID:            strings.TrimSpace(os.Getenv("PBX_CALL_WEBHOOK_PBX_ID")),
 		sipDomain:        strings.TrimSpace(os.Getenv("PBX_CALL_WEBHOOK_SIP_DOMAIN")),
 		inboxByExtension: parseInboxByExtension(os.Getenv("PBX_CALL_WEBHOOK_INBOX_BY_EXTENSION")),
-		client:           &http.Client{Timeout: timeout},
+		client:           &http.Client{Timeout: timeout, Transport: otelhttp.NewTransport(http.DefaultTransport)},
 		queue:            make(chan Event, queueSize),
 		seen:             make(map[string]time.Time),
 	}
@@ -173,7 +181,15 @@ func (d *Dispatcher) run() {
 	}
 }
 
-func (d *Dispatcher) deliver(ctx context.Context, event Event) error {
+func (d *Dispatcher) deliver(ctx context.Context, event Event) (err error) {
+	if event.TraceContext != nil {
+		ctx = event.TraceContext
+	}
+	ctx, span := tracing.StartCall(ctx, event.PBXCallID, "callwebhook.deliver",
+		attribute.String("event_id", event.EventID), attribute.String("event", event.Event),
+		attribute.String("leg_uuid", event.LegUUID))
+	defer span.End()
+	defer func() { tracing.RecordError(span, err) }()
 	body, err := json.Marshal(event)
 	if err != nil {
 		return err
@@ -192,10 +208,11 @@ func (d *Dispatcher) deliver(ctx context.Context, event Event) error {
 		return err
 	}
 	defer response.Body.Close()
+	span.SetAttributes(attribute.Int("http.response.status_code", response.StatusCode))
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return &unexpectedStatusError{status: response.Status}
 	}
-	logger.Info("call webhook delivered", "event_id", event.EventID, "event", event.Event,
+	logger.InfoContext(ctx, "call webhook delivered", "event_id", event.EventID, "event", event.Event,
 		"extension", event.Extension, "inbox_id", event.InboxID, "status", response.Status)
 	return nil
 }
