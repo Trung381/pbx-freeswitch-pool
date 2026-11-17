@@ -1,6 +1,7 @@
 package fsesl
 
 import (
+	"context"
 	"custompbx/altData"
 	"custompbx/altStruct"
 	"custompbx/cache"
@@ -13,6 +14,7 @@ import (
 	"custompbx/mainStruct"
 	"custompbx/pbxcache"
 	"custompbx/promexp"
+	"custompbx/tracing"
 	"custompbx/webcache"
 	"custompbx/xmlStruct"
 	"encoding/json"
@@ -20,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zusrut/fsock"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/net/html/charset"
 	"io"
 	"math/rand"
@@ -670,6 +674,8 @@ func channelCreateHandler(event string, id int, eventChannel chan interface{}) {
 	defer channelStateMu.Unlock()
 	var filterHeaders []string
 	eventMap := fsock.FSEventStrToMap(event, filterHeaders)
+	ctx, span := startChannelSpan("esl.channel_create", eventMap)
+	defer span.End()
 	logDelayedChannelEvent(eventMap)
 	cCache := pbxcache.GetChannelsCache()
 
@@ -715,7 +721,7 @@ func channelCreateHandler(event string, id int, eventChannel chan interface{}) {
 				InitialContext: eventMap[],*/
 
 	}
-	publishCallEvent("call.ringing", "ringing", eventMap, channel)
+	publishCallEvent(ctx, "call.ringing", "ringing", eventMap, channel)
 
 	possibleUserName := channel.PresenceId
 	if possibleUserName == "" {
@@ -740,15 +746,17 @@ func channelAnswerHandler(event string, id int, eventChannel chan interface{}) {
 	defer channelStateMu.Unlock()
 	var filterHeaders []string
 	eventMap := fsock.FSEventStrToMap(event, filterHeaders)
+	ctx, span := startChannelSpan("esl.channel_answer", eventMap)
+	defer span.End()
 	logDelayedChannelEvent(eventMap)
 
 	cCache := pbxcache.GetChannelsCache()
 	channel := cCache.MarkAnswered(eventMap[NameChannelUuid])
 	if channel == nil {
-		publishCallEvent("call.answered", "answered", eventMap, nil)
+		publishCallEvent(ctx, "call.answered", "answered", eventMap, nil)
 		return
 	}
-	publishCallEvent("call.answered", "answered", eventMap, channel)
+	publishCallEvent(ctx, "call.answered", "answered", eventMap, channel)
 	publishChannelCounters(eventChannel, cCache)
 
 	possibleUserName := channel.PresenceId
@@ -770,8 +778,10 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 	defer channelStateMu.Unlock()
 	var filterHeaders []string
 	eventMap := fsock.FSEventStrToMap(event, filterHeaders)
+	ctx, span := startChannelSpan("esl.channel_hangup", eventMap)
+	defer span.End()
 	logDelayedChannelEvent(eventMap)
-	cdrwriter.Persist(eventMap)
+	cdrwriter.PersistContext(ctx, eventMap)
 	if isPrimaryCallLeg(eventMap) {
 		promexp.ObserveCallEnd(eventMap[NameChannelHangupCause], eventMap[NameChannelDirection])
 	}
@@ -779,11 +789,11 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 	cCache := pbxcache.GetChannelsCache()
 	channel := cCache.RemoveByUUID(eventMap[NameChannelUuid], eventMap[NameChannelOtherLegUuid])
 	if channel == nil {
-		publishCallEvent(callEndedEvent(eventMap), callEndedStatus(eventMap), eventMap, nil)
+		publishCallEvent(ctx, callEndedEvent(eventMap), callEndedStatus(eventMap), eventMap, nil)
 		cleanupUnknownDestroyedChannel(eventMap, eventChannel)
 		return
 	}
-	publishCallEvent(callEndedEvent(eventMap), callEndedStatus(eventMap), eventMap, channel)
+	publishCallEvent(ctx, callEndedEvent(eventMap), callEndedStatus(eventMap), eventMap, channel)
 	possibleUserName := channel.PresenceId
 	if possibleUserName == "" {
 		possibleUserName = channel.Name
@@ -799,7 +809,7 @@ func channelDestroyHandler(event string, id int, eventChannel chan interface{}) 
 	eventChannel <- user
 }
 
-func publishCallEvent(eventName, status string, eventMap map[string]string, channel *mainStruct.Channel) {
+func publishCallEvent(ctx context.Context, eventName, status string, eventMap map[string]string, channel *mainStruct.Channel) {
 	// A forked call creates one inbound (originating) leg plus an outbound leg
 	// for every registered contact. Publishing every outbound leg makes a
 	// cancelled sibling look like a missed business call in Chatwoot after a
@@ -854,6 +864,7 @@ func publishCallEvent(eventName, status string, eventMap map[string]string, chan
 	}
 
 	callwebhook.Publish(callwebhook.Event{
+		TraceContext:      ctx,
 		EventID:           eventName + ":" + legUUID,
 		Event:             eventName,
 		PBXCallID:         rootCallID,
@@ -873,6 +884,26 @@ func publishCallEvent(eventName, status string, eventMap map[string]string, chan
 		HangupCause:       eventMap[NameChannelHangupCause],
 		RecordingURL:      eventMap[NameChannelRecordURL],
 	})
+}
+
+// callTraceID returns the identifier that keys one call's trace; same
+// precedence as the webhook's pbx_call_id, falling back to the leg UUID.
+func callTraceID(eventMap map[string]string) string {
+	return firstPresent(
+		eventMap[NameChannelLinkedID],
+		eventMap[NameChannelCallUuid],
+		eventMap[NameChannelOriginatingLegUUID],
+		eventMap[NameChannelOriginationUUID],
+		eventMap[NameChannelUuid],
+	)
+}
+
+// startChannelSpan starts a span of the call's trace for a channel event.
+func startChannelSpan(name string, eventMap map[string]string) (context.Context, trace.Span) {
+	return tracing.StartCall(context.Background(), callTraceID(eventMap), name,
+		attribute.String("leg_uuid", eventMap[NameChannelUuid]),
+		attribute.String("call.direction", eventMap[NameChannelDirection]),
+		attribute.String("hangup_cause", eventMap[NameChannelHangupCause]))
 }
 
 func isPrimaryCallLeg(eventMap map[string]string) bool {

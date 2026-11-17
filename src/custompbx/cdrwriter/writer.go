@@ -6,9 +6,11 @@
 package cdrwriter
 
 import (
+	"context"
 	"custompbx/db"
 	"custompbx/logx"
 	"custompbx/recordingstore"
+	"custompbx/tracing"
 	"database/sql"
 	"net"
 	"strconv"
@@ -52,13 +54,18 @@ type record struct {
 
 // Persist stores one A-leg CDR. It intentionally owns the FreeSWITCH ->
 // PostgreSQL boundary, using parameterized queries and valid UTF-8 only.
-func Persist(event map[string]string) {
+func Persist(event map[string]string) { PersistContext(context.Background(), event) }
+
+// PersistContext is Persist with a context carrying the call's trace span.
+func PersistContext(ctx context.Context, event map[string]string) {
 	record, ok := buildRecord(event)
 	if !ok {
 		return
 	}
+	ctx, span := tracing.StartCall(ctx, record.uuid, "cdr.insert")
+	defer span.End()
 
-	_, err := db.GetDB().Exec(`
+	_, err := db.GetDB().ExecContext(ctx, `
 INSERT INTO cdr (
   local_ip_v4, caller_id_name, caller_id_number, destination_number, context,
   start_stamp, answer_stamp, end_stamp, duration, billsec, hangup_cause,
@@ -76,7 +83,8 @@ WHERE NOT EXISTS (SELECT 1 FROM cdr WHERE uuid = $12::uuid)
 		record.uuid, record.blegUUID, record.accountCode, record.readCodec, record.writeCodec,
 		record.sipHangupDisposition, record.ani, record.recordStereo, record.recordPath, record.recordName, record.linkedID)
 	if err != nil {
-		logx.WithCall(logger, record.uuid).Error("CDR persistence failed", "err", err)
+		tracing.RecordError(span, err)
+		logx.WithCall(logger, record.uuid).ErrorContext(ctx, "CDR persistence failed", "err", err)
 		return
 	}
 	if record.recordPath.Valid {

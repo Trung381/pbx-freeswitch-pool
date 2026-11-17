@@ -16,6 +16,32 @@ datasources:
     url: http://loki:3100
     jsonData:
       maxLines: 1000
+      # Dong log JSON cua custompbx co "trace_id":"..." -> link sang trace trong Tempo.
+      derivedFields:
+        - name: trace_id
+          matcherRegex: '"trace_id":"(\w+)"'
+          url: '$${__value.raw}'
+          urlDisplayLabel: Xem trace
+          datasourceUid: tempo
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # Tu trace sang log custompbx (log JSON co trace_id nhung khong la label => loc bang chuoi).
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        filterByTraceID: false
+        filterBySpanID: false
+        customQuery: true
+        query: '{container="custompbx-host"} |= "$${__trace.traceId}"'
+      search:
+        hide: false
+      nodeGraph:
+        enabled: false
   # User Postgres CHI DOC (xem postgres/create-grafana-ro.sql). Khong dung user admin cua app.
   - name: PBX Postgres (CDR/HEP)
     uid: pbx-postgres

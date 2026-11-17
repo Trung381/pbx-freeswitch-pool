@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"custompbx/logsafe"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -59,7 +61,28 @@ func NewHandler(w io.Writer, level slog.Level) slog.Handler {
 		Level:       level,
 		ReplaceAttr: replaceAttr,
 	})
-	return h.WithAttrs([]slog.Attr{slog.String("service", ServiceName)})
+	return traceHandler{h.WithAttrs([]slog.Attr{slog.String("service", ServiceName)})}
+}
+
+// traceHandler adds trace_id/span_id to records whose context carries a valid
+// span context, so Loki log lines can be linked to Tempo traces.
+type traceHandler struct{ slog.Handler }
+
+func (h traceHandler) Handle(ctx context.Context, r slog.Record) error {
+	if ctx != nil {
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+			r.AddAttrs(slog.String("trace_id", sc.TraceID().String()), slog.String("span_id", sc.SpanID().String()))
+		}
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h traceHandler) WithAttrs(a []slog.Attr) slog.Handler {
+	return traceHandler{h.Handler.WithAttrs(a)}
+}
+
+func (h traceHandler) WithGroup(n string) slog.Handler {
+	return traceHandler{h.Handler.WithGroup(n)}
 }
 
 // Setup installs the JSON logger as slog default and routes the standard
