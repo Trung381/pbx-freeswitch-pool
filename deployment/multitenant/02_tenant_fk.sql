@@ -58,4 +58,12 @@ BEGIN
     ALTER TABLE cdr ALTER COLUMN tenant_id SET NOT NULL;
     CREATE INDEX IF NOT EXISTS cdr_tenant_id_start_stamp_idx
         ON cdr (tenant_id, start_stamp DESC);
+
+    -- Column default so writers that don't know about tenant_id yet (the on-main
+    -- Go WIP) keep working. Phase 2c teaches the writer to carry the caller's
+    -- tenant through and remove this default.
+    EXECUTE format('ALTER TABLE directory_domains ALTER COLUMN tenant_id SET DEFAULT %s', v_default_tenant);
+    EXECUTE format('ALTER TABLE config_sofia_profile_gateways ALTER COLUMN tenant_id SET DEFAULT %s', v_default_tenant);
+    EXECUTE format('ALTER TABLE dialplan_contexts ALTER COLUMN tenant_id SET DEFAULT %s', v_default_tenant);
+    EXECUTE format('ALTER TABLE cdr ALTER COLUMN tenant_id SET DEFAULT %s', v_default_tenant);
 END $$;
