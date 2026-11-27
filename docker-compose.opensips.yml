@@ -1,0 +1,106 @@
+# Phase 1 overlay: adds OpenSIPS 3.5 as the public SIP SBC and rtpengine as the
+# media relay; strips FreeSWITCH of its public SIP ports so the only public
+# ingress becomes OpenSIPS (SIP) + rtpengine (RTP).
+#
+# Usage:
+#   docker compose \
+#       -f docker-compose.yml \
+#       -f docker-compose.opensips.yml \
+#       up -d
+#
+# Rollback:
+#   docker compose -f docker-compose.yml up -d   # drops the overlay
+
+services:
+  opensips-init:
+    image: postgres:16
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      PGHOST: postgres
+      PGUSER: custompbx
+      PGPASSWORD: custompbx
+      PGDATABASE: postgres
+    volumes:
+      - ./deployment/opensips/init-opensips.sql:/sql/init-opensips.sql:ro
+      - ./deployment/opensips/schema.sql:/sql/schema.sql:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        until pg_isready -h postgres -U custompbx; do sleep 2; done
+        psql -v ON_ERROR_STOP=1 -f /sql/init-opensips.sql
+        PGUSER=opensips PGPASSWORD=opensips PGDATABASE=opensips \
+            psql -v ON_ERROR_STOP=1 -f /sql/schema.sql
+    networks:
+      - local_network
+
+  opensips:
+    container_name: opensips-host
+    # Custom image = opensips/opensips:3.6 + opensips-postgres-module. The
+    # upstream 3.5 Debian repo was retired, and the postgres driver is not in
+    # the base image; see docker/opensips/Dockerfile.
+    build:
+      context: ./docker/opensips
+    image: pbx-opensips:3.6
+    restart: always
+    depends_on:
+      opensips-init:
+        condition: service_completed_successfully
+      freeswitch:
+        condition: service_started
+      rtpengine:
+        condition: service_started
+    command: ["opensips", "-F"]
+    volumes:
+      - ./deployment/opensips/opensips.cfg:/etc/opensips/opensips.cfg:ro
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "5080:5080/udp"
+      - "5080:5080/tcp"
+      # TLS 5061 is intentionally not bound in Phase 1 — Phase 4 wires the
+      # wss.td1.tekomi.vn certificate and mounts it here.
+    networks:
+      - local_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  rtpengine:
+    container_name: rtpengine-host
+    image: drachtio/rtpengine:latest@sha256:d5bf3715baa197d89f89a70207d06d5509a4284b7392310a94a466ace07afb96
+    restart: always
+    # rtpengine insists on direct access to kernel XTables + raw sockets for
+    # the kernel-forwarding path. Host networking is also what upstream docs
+    # recommend; it keeps NG-control on 127.0.0.1:2223 off the public NIC.
+    network_mode: host
+    entrypoint: ["rtpengine"]
+    volumes:
+      - ./deployment/opensips/rtpengine.conf:/etc/rtpengine.conf:ro
+    command:
+      - --config-file=/etc/rtpengine.conf
+
+  freeswitch:
+    # Flip FreeSWITCH from "public SBC" to "backend behind OpenSIPS". The
+    # internal/external/TLS listeners move to 1506x/1508x so OpenSIPS owns the
+    # standard ports, and the host-facing publication drops to the WebSocket
+    # loopback pair that nginx already proxies.
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cp /seed/vars.xml /etc/freeswitch/vars.xml
+        sed -i 's|<!--<param name="multiple-registrations" value="contact"/>-->|<param name="multiple-registrations" value="contact"/>|' /etc/freeswitch/sip_profiles/internal.xml
+        # Move SIP + TLS ports off the public defaults.
+        sed -i \
+          -e 's|data="internal_sip_port=5060"|data="internal_sip_port=15060"|' \
+          -e 's|data="internal_tls_port=5061"|data="internal_tls_port=15061"|' \
+          -e 's|data="external_sip_port=5080"|data="external_sip_port=15080"|' \
+          -e 's|data="external_tls_port=5081"|data="external_tls_port=15081"|' \
+          /etc/freeswitch/vars.xml
+        exec freeswitch -nonat
+    ports: !override
+      - "127.0.0.1:5066:5066/tcp"
+      - "127.0.0.1:7443:7443/tcp"
+      - "16384-16399:16384-16399/udp"
