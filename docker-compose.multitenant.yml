@@ -1,0 +1,69 @@
+# Phase 2 + 3 overlay. Layered on top of docker-compose.yml +
+# docker-compose.opensips.yml:
+#
+#   docker compose \
+#       -f docker-compose.yml \
+#       -f docker-compose.opensips.yml \
+#       -f docker-compose.multitenant.yml \
+#       up -d
+#
+# Adds:
+#   * multitenant-init  — runs the four schema migrations once, then exits.
+#   * postgres-exporter — publishes per-tenant metrics on :9187.
+#   * webhook-dispatcher — LISTEN/NOTIFY sidecar that signs + POSTs CDRs.
+
+services:
+  multitenant-init:
+    image: postgres:16
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      PGHOST: postgres
+      PGUSER: custompbx
+      PGPASSWORD: custompbx
+      PGDATABASE: custompbx
+    volumes:
+      - ./deployment/multitenant/01_tenants.sql:/sql/01_tenants.sql:ro
+      - ./deployment/multitenant/02_tenant_fk.sql:/sql/02_tenant_fk.sql:ro
+      - ./deployment/multitenant/03_metrics_views.sql:/sql/03_metrics_views.sql:ro
+      - ./deployment/multitenant/04_webhooks.sql:/sql/04_webhooks.sql:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        until pg_isready -h postgres -U custompbx; do sleep 1; done
+        for f in 01_tenants 02_tenant_fk 03_metrics_views 04_webhooks; do
+          echo "applying $$f.sql"
+          psql -v ON_ERROR_STOP=1 -f /sql/$$f.sql
+        done
+    networks:
+      - local_network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: always
+    depends_on:
+      multitenant-init:
+        condition: service_completed_successfully
+    environment:
+      DATA_SOURCE_NAME: postgresql://custompbx:custompbx@postgres:5432/custompbx?sslmode=disable
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/pg_queries.yaml
+    volumes:
+      - ./deployment/multitenant/pg_exporter_queries.yaml:/etc/pg_queries.yaml:ro
+    networks:
+      - local_network
+
+  webhook-dispatcher:
+    container_name: webhook-dispatcher
+    build:
+      context: ./deployment/multitenant/webhook
+    restart: always
+    depends_on:
+      multitenant-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://custompbx:custompbx@postgres:5432/custompbx
+      LOG_LEVEL: INFO
+    networks:
+      - local_network

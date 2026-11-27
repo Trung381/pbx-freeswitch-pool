@@ -1,0 +1,45 @@
+pg_tenant_calls:
+  query: |
+    SELECT slug, name, calls_total, minutes_total,
+           calls_today, minutes_today, calls_in_flight_estimate
+    FROM tenant_call_metrics
+  metrics:
+    - slug:
+        usage: LABEL
+        description: Tenant slug
+    - name:
+        usage: LABEL
+        description: Tenant display name
+    - calls_total:
+        usage: COUNTER
+        description: Lifetime CDR count for this tenant
+    - minutes_total:
+        usage: COUNTER
+        description: Lifetime billable minutes for this tenant
+    - calls_today:
+        usage: GAUGE
+        description: CDRs since UTC midnight
+    - minutes_today:
+        usage: GAUGE
+        description: Billable minutes since UTC midnight
+    - calls_in_flight_estimate:
+        usage: GAUGE
+        description: CDRs looking still open (no answer timestamp) in the last hour
+
+pg_tenant_registered:
+  query: |
+    SELECT t.slug,
+           COALESCE(COUNT(l.contact_id) FILTER (WHERE l.expires > NOW()), 0)::BIGINT AS registered
+    FROM tenants t
+    LEFT JOIN dblink('host=postgres user=opensips password=opensips dbname=opensips',
+                     $$SELECT contact_id, username, domain, expires FROM location$$)
+            AS l(contact_id BIGINT, username TEXT, domain TEXT, expires TIMESTAMP)
+       ON l.domain IS NOT NULL AND l.domain = t.slug || '.td1.tekomi.vn'
+    GROUP BY t.slug
+  metrics:
+    - slug:
+        usage: LABEL
+        description: Tenant slug
+    - registered:
+        usage: GAUGE
+        description: AoR count from OpenSIPS usrloc keyed by tenant domain

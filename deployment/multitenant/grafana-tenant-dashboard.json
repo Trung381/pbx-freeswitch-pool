@@ -1,0 +1,73 @@
+{
+  "title": "Tenant Overview",
+  "uid": "tenant-overview",
+  "editable": true,
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "tenant",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(pg_tenant_calls_calls_total, slug)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Calls today",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum by (slug) (pg_tenant_calls_calls_today{slug=~\"$tenant\"})", "legendFormat": "{{slug}}" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Minutes today",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum by (slug) (pg_tenant_calls_minutes_today{slug=~\"$tenant\"})", "legendFormat": "{{slug}}" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Concurrent (estimate)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum by (slug) (pg_tenant_calls_calls_in_flight_estimate{slug=~\"$tenant\"})", "legendFormat": "{{slug}}" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "SIP registered",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "sum by (slug) (pg_tenant_registered_registered{slug=~\"$tenant\"})", "legendFormat": "{{slug}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Calls per minute",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(pg_tenant_calls_calls_total{slug=~\"$tenant\"}[5m]) * 60", "legendFormat": "{{slug}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Billable minutes/h",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(pg_tenant_calls_minutes_total{slug=~\"$tenant\"}[1h]) * 3600", "legendFormat": "{{slug}}" }
+      ]
+    }
+  ]
+}
